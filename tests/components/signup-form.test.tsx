@@ -107,7 +107,7 @@ describe("SignupForm", () => {
     )
 
     await waitFor(() => expect(mockRefreshUser).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/"))
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/dashboard"))
   })
 
   it("blocks invalid email and shows a field error", async () => {

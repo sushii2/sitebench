@@ -63,7 +63,7 @@ export function SignupForm({
 
   React.useEffect(() => {
     if (!isAuthLoading && user) {
-      router.replace("/")
+      router.replace("/dashboard")
     }
   }, [isAuthLoading, router, user])
 
@@ -173,7 +173,7 @@ export function SignupForm({
 
       if (data?.accessToken) {
         await refreshUser()
-        router.replace("/")
+        router.replace("/dashboard")
       }
     } catch (submissionError) {
       setFormError(

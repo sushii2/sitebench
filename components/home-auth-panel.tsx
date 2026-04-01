@@ -54,6 +54,9 @@ export function HomeAuthPanel({
           </CardHeader>
           <CardContent>
             <FieldGroup>
+              <Button asChild className="w-full">
+                <Link href="/dashboard">Go to dashboard</Link>
+              </Button>
               <Button
                 type="button"
                 variant="outline"

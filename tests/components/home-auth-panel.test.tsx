@@ -91,6 +91,10 @@ describe("HomeAuthPanel", () => {
 
     expect(await screen.findByText("Signed in as")).toBeInTheDocument()
     expect(screen.getByText("jane@example.com")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Go to dashboard" })).toHaveAttribute(
+      "href",
+      "/dashboard"
+    )
     expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument()
   })
 

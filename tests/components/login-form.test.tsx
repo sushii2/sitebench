@@ -152,7 +152,7 @@ describe("LoginForm", () => {
     )
 
     await waitFor(() => expect(mockRefreshUser).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/"))
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/dashboard"))
   })
 
   it("redirects authenticated users away from the login page", async () => {
@@ -160,6 +160,6 @@ describe("LoginForm", () => {
 
     renderLoginForm()
 
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/"))
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/dashboard"))
   })
 })

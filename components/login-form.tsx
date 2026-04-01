@@ -49,7 +49,7 @@ export function LoginForm({
 
   React.useEffect(() => {
     if (!isAuthLoading && user) {
-      router.replace("/")
+      router.replace("/dashboard")
     }
   }, [isAuthLoading, router, user])
 
@@ -109,7 +109,7 @@ export function LoginForm({
 
       if (data?.accessToken) {
         await refreshUser()
-        router.replace("/")
+        router.replace("/dashboard")
         return
       }
 
