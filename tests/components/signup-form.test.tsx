@@ -6,7 +6,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const mockReplace = vi.fn()
 const mockSignUp = vi.fn()
 const mockGetPublicAuthConfig = vi.fn()
-const mockRefreshUser = vi.fn()
+const mockRefreshAuthState = vi.fn()
+
+const authState = {
+  authenticatedRedirectPath: null as "/dashboard" | "/onboarding" | null,
+  brand: null,
+  brandStatus: "ready" as "loading" | "ready" | "error",
+  brandStatusError: null as string | null,
+  isLoading: false,
+  needsOnboarding: false,
+  refreshAuthState: mockRefreshAuthState,
+  refreshUser: vi.fn(),
+  signOut: vi.fn(),
+  user: null as { email: string } | null,
+}
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -15,12 +28,7 @@ vi.mock("next/navigation", () => ({
 }))
 
 vi.mock("@/components/auth-provider", () => ({
-  useAuth: () => ({
-    isLoading: false,
-    refreshUser: mockRefreshUser,
-    signOut: vi.fn(),
-    user: null,
-  }),
+  useAuth: () => authState,
 }))
 
 vi.mock("@/lib/insforge/browser-client", () => ({
@@ -48,8 +56,25 @@ beforeEach(() => {
   mockReplace.mockReset()
   mockSignUp.mockReset()
   mockGetPublicAuthConfig.mockReset()
-  mockRefreshUser.mockReset()
-  mockRefreshUser.mockResolvedValue({} as never)
+  mockRefreshAuthState.mockReset()
+  authState.authenticatedRedirectPath = null
+  authState.brand = null
+  authState.brandStatus = "ready"
+  authState.brandStatusError = null
+  authState.isLoading = false
+  authState.needsOnboarding = false
+  authState.refreshAuthState = mockRefreshAuthState
+  authState.refreshUser = vi.fn()
+  authState.signOut = vi.fn()
+  authState.user = null
+  mockRefreshAuthState.mockResolvedValue({
+    authenticatedRedirectPath: "/dashboard",
+    brand: null,
+    brandStatus: "ready",
+    brandStatusError: null,
+    needsOnboarding: false,
+    user: { email: "jane@example.com" },
+  } as never)
 
   mockGetPublicAuthConfig.mockResolvedValue({
     data: {
@@ -106,8 +131,81 @@ describe("SignupForm", () => {
       })
     )
 
-    await waitFor(() => expect(mockRefreshUser).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockRefreshAuthState).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/dashboard"))
+  })
+
+  it("redirects successful sign-up to onboarding when setup is incomplete", async () => {
+    const user = userEvent.setup()
+
+    mockSignUp.mockResolvedValue({
+      data: {
+        accessToken: "token",
+        user: { email: "test@example.com" },
+      },
+      error: null,
+    })
+    mockRefreshAuthState.mockResolvedValue({
+      authenticatedRedirectPath: "/onboarding",
+      brand: null,
+      brandStatus: "ready",
+      brandStatusError: null,
+      needsOnboarding: true,
+      user: { email: "jane@example.com" },
+    } as never)
+
+    renderSignupForm()
+
+    await waitFor(() =>
+      expect(mockGetPublicAuthConfig).toHaveBeenCalledTimes(1)
+    )
+    await waitForConfigReady()
+
+    await user.type(screen.getByLabelText("Full Name"), "Jane Doe")
+    await user.type(screen.getByLabelText("Email"), "jane@example.com")
+    await user.type(screen.getByLabelText("Password"), "StrongPass!123")
+    await user.type(screen.getByLabelText("Confirm Password"), "StrongPass!123")
+    await user.click(screen.getByRole("button", { name: "Create Account" }))
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/onboarding"))
+  })
+
+  it("shows a brand status error instead of redirecting when refreshAuthState fails", async () => {
+    const user = userEvent.setup()
+
+    mockSignUp.mockResolvedValue({
+      data: {
+        accessToken: "token",
+        user: { email: "test@example.com" },
+      },
+      error: null,
+    })
+    mockRefreshAuthState.mockResolvedValue({
+      authenticatedRedirectPath: null,
+      brand: null,
+      brandStatus: "error",
+      brandStatusError: "Unable to load your brand setup.",
+      needsOnboarding: false,
+      user: { email: "jane@example.com" },
+    } as never)
+
+    renderSignupForm()
+
+    await waitFor(() =>
+      expect(mockGetPublicAuthConfig).toHaveBeenCalledTimes(1)
+    )
+    await waitForConfigReady()
+
+    await user.type(screen.getByLabelText("Full Name"), "Jane Doe")
+    await user.type(screen.getByLabelText("Email"), "jane@example.com")
+    await user.type(screen.getByLabelText("Password"), "StrongPass!123")
+    await user.type(screen.getByLabelText("Confirm Password"), "StrongPass!123")
+    await user.click(screen.getByRole("button", { name: "Create Account" }))
+
+    expect(
+      await screen.findByText("Unable to load your brand setup.")
+    ).toBeInTheDocument()
+    expect(mockReplace).not.toHaveBeenCalled()
   })
 
   it("blocks invalid email and shows a field error", async () => {
