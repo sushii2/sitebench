@@ -14,14 +14,31 @@ describe("dashboard pages", () => {
   it.each(dashboardPages)(
     "renders the $heading page heading",
     async ({ heading, modulePath }) => {
-      const module = await import(modulePath)
-      const Page = module.default
+      const pageModule = await import(modulePath)
+      const Page = pageModule.default
 
       render(<Page />)
 
       expect(
         screen.getByRole("heading", { level: 1, name: heading })
       ).toBeInTheDocument()
+    }
+  )
+
+  it.each(dashboardPages)(
+    "renders a skeleton loading shell for the $heading page",
+    async ({ heading, modulePath }) => {
+      const loadingModulePath = modulePath.replace("/page", "/loading")
+      const loadingModule = await import(loadingModulePath)
+      const Page = loadingModule.default
+
+      const { container } = render(<Page />)
+
+      expect(screen.getByText(heading)).toBeInTheDocument()
+      expect(
+        container.querySelectorAll('[data-slot="skeleton"]').length
+      ).toBeGreaterThan(0)
+      expect(screen.getByText("Loading page shell...")).toBeInTheDocument()
     }
   )
 })
