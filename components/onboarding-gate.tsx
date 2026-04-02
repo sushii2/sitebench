@@ -3,8 +3,8 @@
 import * as React from "react"
 import { useRouter } from "next/navigation"
 
+import { OnboardingWizard } from "@/components/onboarding/onboarding-wizard"
 import { useAuth } from "@/components/auth-provider"
-import { DashboardSidebar } from "@/components/dashboard-sidebar"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -13,20 +13,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar"
 
-export function DashboardShell({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export function OnboardingGate() {
   const router = useRouter()
   const {
+    brand,
     brandStatus,
     brandStatusError,
     isLoading,
@@ -40,18 +31,20 @@ export function DashboardShell({
       router.replace("/login")
     }
 
-    if (!isLoading && user && brandStatus === "ready" && needsOnboarding) {
-      router.replace("/onboarding")
+    if (!isLoading && user && brandStatus === "ready" && !needsOnboarding) {
+      router.replace("/dashboard")
     }
   }, [brandStatus, isLoading, needsOnboarding, router, user])
 
   if (isLoading) {
     return (
-      <div className="flex min-h-svh items-center justify-center bg-muted p-6">
-        <Card className="w-full max-w-sm">
+      <div className="flex min-h-svh items-center justify-center bg-muted p-6 md:p-10">
+        <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-xl">Checking your session...</CardTitle>
-            <CardDescription>Loading your dashboard access.</CardDescription>
+            <CardTitle className="text-xl">Checking your setup...</CardTitle>
+            <CardDescription>
+              Loading your brand onboarding status.
+            </CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -60,13 +53,11 @@ export function DashboardShell({
 
   if (!user) {
     return (
-      <div className="flex min-h-svh items-center justify-center bg-muted p-6">
-        <Card className="w-full max-w-sm">
+      <div className="flex min-h-svh items-center justify-center bg-muted p-6 md:p-10">
+        <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <CardTitle className="text-xl">Redirecting...</CardTitle>
-            <CardDescription>
-              Taking you back to login.
-            </CardDescription>
+            <CardDescription>Taking you to login.</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -75,8 +66,8 @@ export function DashboardShell({
 
   if (brandStatus === "error") {
     return (
-      <div className="flex min-h-svh items-center justify-center bg-muted p-6">
-        <Card className="w-full max-w-sm">
+      <div className="flex min-h-svh items-center justify-center bg-muted p-6 md:p-10">
+        <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <CardTitle className="text-xl">
               We couldn&apos;t load your brand setup
@@ -102,33 +93,20 @@ export function DashboardShell({
     )
   }
 
-  if (needsOnboarding) {
+  if (!needsOnboarding) {
     return (
-      <div className="flex min-h-svh items-center justify-center bg-muted p-6">
-        <Card className="w-full max-w-sm">
+      <div className="flex min-h-svh items-center justify-center bg-muted p-6 md:p-10">
+        <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <CardTitle className="text-xl">Redirecting...</CardTitle>
-            <CardDescription>Taking you to your onboarding flow.</CardDescription>
+            <CardDescription>
+              Your brand is already set up. Taking you to the dashboard.
+            </CardDescription>
           </CardHeader>
         </Card>
       </div>
     )
   }
 
-  return (
-    <SidebarProvider>
-      <DashboardSidebar />
-      <SidebarInset>
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <Separator
-            orientation="vertical"
-            className="data-vertical:h-4 data-vertical:self-auto"
-          />
-          <div className="text-sm font-medium">Project dashboard</div>
-        </header>
-        {children}
-      </SidebarInset>
-    </SidebarProvider>
-  )
+  return <OnboardingWizard brand={brand} refreshAuthState={refreshAuthState} />
 }

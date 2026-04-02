@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mockReplace = vi.fn()
 const mockSignIn = vi.fn()
-const mockRefreshUser = vi.fn()
+const mockRefreshAuthState = vi.fn()
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -34,15 +34,27 @@ vi.mock("next/link", () => ({
 import { LoginForm } from "@/components/login-form"
 
 type AuthState = {
+  authenticatedRedirectPath: "/dashboard" | "/onboarding" | null
+  brand: null
+  brandStatus: "loading" | "ready" | "error"
+  brandStatusError: string | null
   isLoading: boolean
+  needsOnboarding: boolean
+  refreshAuthState: ReturnType<typeof vi.fn>
   refreshUser: ReturnType<typeof vi.fn>
   signOut: ReturnType<typeof vi.fn>
   user: { email: string } | null
 }
 
 const authState: AuthState = {
+  authenticatedRedirectPath: null,
+  brand: null,
+  brandStatus: "ready",
+  brandStatusError: null,
   isLoading: false,
-  refreshUser: mockRefreshUser,
+  needsOnboarding: false,
+  refreshAuthState: mockRefreshAuthState,
+  refreshUser: vi.fn(),
   signOut: vi.fn(),
   user: null,
 }
@@ -58,12 +70,25 @@ function renderLoginForm() {
 beforeEach(() => {
   mockReplace.mockReset()
   mockSignIn.mockReset()
-  mockRefreshUser.mockReset()
+  mockRefreshAuthState.mockReset()
   authState.isLoading = false
+  authState.authenticatedRedirectPath = null
+  authState.brand = null
+  authState.brandStatus = "ready"
+  authState.brandStatusError = null
+  authState.needsOnboarding = false
   authState.user = null
-  authState.refreshUser = mockRefreshUser
+  authState.refreshAuthState = mockRefreshAuthState
+  authState.refreshUser = vi.fn()
   authState.signOut = vi.fn()
-  mockRefreshUser.mockResolvedValue({} as never)
+  mockRefreshAuthState.mockResolvedValue({
+    authenticatedRedirectPath: "/dashboard",
+    brand: null,
+    brandStatus: "ready",
+    brandStatusError: null,
+    needsOnboarding: false,
+    user: { email: "jane@example.com" },
+  } as never)
 })
 
 afterEach(() => {
@@ -151,12 +176,72 @@ describe("LoginForm", () => {
       })
     )
 
-    await waitFor(() => expect(mockRefreshUser).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockRefreshAuthState).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/dashboard"))
+  })
+
+  it("redirects successful sign-in to onboarding when setup is incomplete", async () => {
+    const user = userEvent.setup()
+
+    mockSignIn.mockResolvedValue({
+      data: {
+        accessToken: "token",
+        user: { email: "jane@example.com" },
+      },
+      error: null,
+    })
+    mockRefreshAuthState.mockResolvedValue({
+      authenticatedRedirectPath: "/onboarding",
+      brand: null,
+      brandStatus: "ready",
+      brandStatusError: null,
+      needsOnboarding: true,
+      user: { email: "jane@example.com" },
+    } as never)
+
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText("Email"), "jane@example.com")
+    await user.type(screen.getByLabelText("Password"), "Password123!")
+    await user.click(screen.getByRole("button", { name: "Log In" }))
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/onboarding"))
+  })
+
+  it("shows a brand status error instead of redirecting when refreshAuthState fails", async () => {
+    const user = userEvent.setup()
+
+    mockSignIn.mockResolvedValue({
+      data: {
+        accessToken: "token",
+        user: { email: "jane@example.com" },
+      },
+      error: null,
+    })
+    mockRefreshAuthState.mockResolvedValue({
+      authenticatedRedirectPath: null,
+      brand: null,
+      brandStatus: "error",
+      brandStatusError: "Unable to load your brand setup.",
+      needsOnboarding: false,
+      user: { email: "jane@example.com" },
+    } as never)
+
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText("Email"), "jane@example.com")
+    await user.type(screen.getByLabelText("Password"), "Password123!")
+    await user.click(screen.getByRole("button", { name: "Log In" }))
+
+    expect(
+      await screen.findByText("Unable to load your brand setup.")
+    ).toBeInTheDocument()
+    expect(mockReplace).not.toHaveBeenCalled()
   })
 
   it("redirects authenticated users away from the login page", async () => {
     authState.user = { email: "jane@example.com" }
+    authState.authenticatedRedirectPath = "/dashboard"
 
     renderLoginForm()
 

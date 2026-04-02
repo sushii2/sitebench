@@ -39,7 +39,14 @@ export function LoginForm({
   ...props
 }: React.ComponentProps<"div">) {
   const router = useRouter()
-  const { isLoading: isAuthLoading, refreshUser, user } = useAuth()
+  const {
+    authenticatedRedirectPath,
+    brandStatus,
+    brandStatusError,
+    isLoading: isAuthLoading,
+    refreshAuthState,
+    user,
+  } = useAuth()
   const [formValues, setFormValues] = React.useState<LoginValues>(emptyValues)
   const [fieldErrors, setFieldErrors] = React.useState<
     Partial<Record<keyof LoginValues, string>>
@@ -48,10 +55,15 @@ export function LoginForm({
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
   React.useEffect(() => {
-    if (!isAuthLoading && user) {
-      router.replace("/dashboard")
+    if (
+      !isAuthLoading &&
+      user &&
+      brandStatus === "ready" &&
+      authenticatedRedirectPath
+    ) {
+      router.replace(authenticatedRedirectPath)
     }
-  }, [isAuthLoading, router, user])
+  }, [authenticatedRedirectPath, brandStatus, isAuthLoading, router, user])
 
   function updateField<K extends keyof LoginValues>(
     key: K,
@@ -108,8 +120,21 @@ export function LoginForm({
       }
 
       if (data?.accessToken) {
-        await refreshUser()
-        router.replace("/dashboard")
+        const nextAuthState = await refreshAuthState()
+
+        if (nextAuthState.brandStatus === "error") {
+          setFormError(
+            nextAuthState.brandStatusError ??
+              "Unable to load your brand setup."
+          )
+          return
+        }
+
+        if (nextAuthState.authenticatedRedirectPath) {
+          router.replace(nextAuthState.authenticatedRedirectPath)
+          return
+        }
+
         return
       }
 
@@ -135,6 +160,35 @@ export function LoginForm({
             <CardTitle className="text-xl">Checking your session...</CardTitle>
             <CardDescription>Loading Sitebench.</CardDescription>
           </CardHeader>
+        </Card>
+      </div>
+    )
+  }
+
+  if (user && brandStatus === "error") {
+    return (
+      <div className={cn("flex flex-col gap-6", className)} {...props}>
+        <Card>
+          <CardHeader className="text-center">
+            <CardTitle className="text-xl">
+              We couldn&apos;t load your brand setup
+            </CardTitle>
+            <CardDescription>
+              {brandStatusError ?? "Please try again in a moment."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              type="button"
+              className="w-full"
+              variant="outline"
+              onClick={() => {
+                void refreshAuthState()
+              }}
+            >
+              Try again
+            </Button>
+          </CardContent>
         </Card>
       </div>
     )
