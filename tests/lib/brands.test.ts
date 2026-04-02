@@ -4,6 +4,7 @@ import { resolve } from "node:path"
 import { describe, expect, it, vi } from "vitest"
 
 import {
+  buildBrandLogoUrl,
   isOnboardingComplete,
   loadCurrentUserBrand,
   markOnboardingComplete,
@@ -12,6 +13,7 @@ import {
   normalizeBrandTopics,
   normalizeCompetitors,
   replaceBrandCompetitors,
+  resolveBrandWebsitePreview,
   saveBrandDraftStep,
   type Brand,
   type BrandCompetitor,
@@ -143,6 +145,27 @@ describe("brand helpers", () => {
       { name: "OpenAI", website: "https://openai.com" },
       { name: "Anthropic", website: "https://anthropic.com" },
     ])
+  })
+
+  it("builds a logo.dev image url for a domain", () => {
+    expect(buildBrandLogoUrl("acme.com", "pk_test_123")).toBe(
+      "https://img.logo.dev/acme.com?token=pk_test_123&size=64&format=png&fallback=monogram"
+    )
+  })
+
+  it("resolves a website preview from raw input", () => {
+    expect(resolveBrandWebsitePreview("Example.com/pricing", "pk_test_123")).toEqual(
+      {
+        domain: "example.com",
+        logoUrl:
+          "https://img.logo.dev/example.com?token=pk_test_123&size=64&format=png&fallback=monogram",
+        origin: "https://example.com",
+      }
+    )
+  })
+
+  it("returns null when a website preview cannot be derived", () => {
+    expect(resolveBrandWebsitePreview("foo", "pk_test_123")).toBeNull()
   })
 
   it("derives onboarding completion from the brand and competitors", () => {

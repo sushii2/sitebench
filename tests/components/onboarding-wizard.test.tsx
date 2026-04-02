@@ -101,6 +101,7 @@ beforeEach(() => {
   mockSaveBrandDraftStep.mockReset()
   mockReplaceBrandCompetitors.mockReset()
   mockMarkOnboardingComplete.mockReset()
+  process.env.NEXT_PUBLIC_LOGO_DEV_PUBLISHABLE_KEY = "pk_test_123"
 
   mockRefreshAuthState.mockResolvedValue({
     authenticatedRedirectPath: "/dashboard",
@@ -185,6 +186,17 @@ describe("Onboarding wizard", () => {
     expect(
       screen.getByText("Enter a valid company name")
     ).toBeInTheDocument()
+    expect(screen.queryByText("https://foo")).not.toBeInTheDocument()
+  })
+
+  it("shows a live brand preview on step 1 when the website is valid", async () => {
+    const user = userEvent.setup()
+
+    await renderWizard()
+
+    await user.type(screen.getByLabelText("Company website"), "acme.com")
+
+    expect(await screen.findByText("https://acme.com")).toBeInTheDocument()
   })
 
   it("shows an inline error when saving step 1 fails", async () => {
@@ -416,6 +428,30 @@ describe("Onboarding wizard", () => {
     )
     await waitFor(() => expect(mockRefreshAuthState).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/dashboard"))
+    expect(mockRefreshAuthState.mock.invocationCallOrder[0]).toBeLessThan(
+      mockReplace.mock.invocationCallOrder[0]
+    )
+  })
+
+  it("shows live competitor previews as websites are entered", async () => {
+    const user = userEvent.setup()
+
+    await renderWizard(
+      makeBrand({
+        company_name: "Acme",
+        description: "Description",
+        topics: ["ai search", "google ai mode", "perplexity"],
+        website: "https://acme.com",
+      })
+    )
+
+    const websiteInputs = screen.getAllByLabelText(/Competitor website/i)
+
+    await user.type(websiteInputs[0]!, "competitor-1.com")
+
+    expect(
+      await screen.findByText("https://competitor-1.com")
+    ).toBeInTheDocument()
   })
 
   it("shows an inline error when final completion fails", async () => {

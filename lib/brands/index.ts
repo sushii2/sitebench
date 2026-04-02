@@ -1,4 +1,5 @@
 export * from "./normalizers"
+export * from "./logo"
 export * from "./repository"
 export * from "./types"
 export * from "./validation"

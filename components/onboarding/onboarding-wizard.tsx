@@ -14,6 +14,7 @@ import {
 } from "@/lib/brands"
 import { getInsforgeBrowserClient } from "@/lib/insforge/browser-client"
 import { cn } from "@/lib/utils"
+import { BrandPreview } from "@/components/brands/brand-preview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -673,6 +674,7 @@ export function OnboardingWizard({
                         }}
                         aria-invalid={Boolean(validation.step1Website)}
                       />
+                      <BrandPreview website={website} name={companyName} />
                       {validation.step1Website ? (
                         <FieldDescription className="text-destructive">
                           {validation.step1Website}
@@ -913,6 +915,10 @@ export function OnboardingWizard({
                                       )
                                     }
                                     aria-invalid={Boolean(rowErrors.website)}
+                                  />
+                                  <BrandPreview
+                                    website={competitor.website}
+                                    name={competitor.name}
                                   />
                                   {rowErrors.website ? (
                                     <FieldDescription className="text-destructive">

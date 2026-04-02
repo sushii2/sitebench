@@ -9,7 +9,7 @@ import {
   dashboardCollectionLabels,
   dashboardNavItems,
 } from "@/components/dashboard-nav"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
   HoverCard,
@@ -31,27 +31,95 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { resolveBrandWebsitePreview } from "@/lib/brands"
+import { resolveLogoDevPublicConfig } from "@/lib/logo-dev/config"
 import { cn } from "@/lib/utils"
 
 function getInitials(label: string) {
-  return label
+  const initials = label
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("")
+
+  return initials || "?"
+}
+
+function DashboardSidebarBrandHeader({
+  brandName,
+  isCollapsed,
+  website,
+}: {
+  brandName: string
+  isCollapsed: boolean
+  website: string
+}) {
+  const [logoFailed, setLogoFailed] = React.useState(false)
+
+  React.useEffect(() => {
+    setLogoFailed(false)
+  }, [website])
+
+  let brandPreview: ReturnType<typeof resolveBrandWebsitePreview> | null = null
+
+  try {
+    const publishableKey = resolveLogoDevPublicConfig().publishableKey
+    brandPreview = resolveBrandWebsitePreview(website, publishableKey)
+  } catch {
+    brandPreview = null
+  }
+
+  const websiteLabel = brandPreview?.origin ?? website.trim()
+  const fallbackLabel = getInitials(brandName || brandPreview?.domain || website)
+
+  return (
+    <div
+      aria-label={`Brand navigation for ${brandName}`}
+      className={cn(
+        "flex items-center gap-3 px-2 py-1",
+        isCollapsed && "justify-center px-0"
+      )}
+    >
+      <Avatar className="size-8 rounded-none" size="sm">
+        {brandPreview && !logoFailed ? (
+          <AvatarImage
+            className="rounded-none object-contain"
+            src={brandPreview.logoUrl}
+            alt={`${brandName} logo`}
+            onError={() => {
+              setLogoFailed(true)
+            }}
+          />
+        ) : null}
+        <AvatarFallback className="rounded-none text-[10px] font-medium uppercase">
+          {fallbackLabel}
+        </AvatarFallback>
+      </Avatar>
+      {isCollapsed ? null : (
+        <div className="grid min-w-0 flex-1 text-left">
+          <span className="truncate text-sm font-semibold">{brandName}</span>
+          <span className="truncate text-xs text-sidebar-foreground/70">
+            {websiteLabel}
+          </span>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function DashboardSidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const { signOut, user } = useAuth()
+  const { brand, signOut, user } = useAuth()
   const { state } = useSidebar()
   const [isSigningOut, setIsSigningOut] = React.useState(false)
 
   const userName = user?.profile?.name ?? "Account"
   const userEmail = user?.email ?? ""
   const isCollapsed = state === "collapsed"
+  const brandName = brand?.company_name?.trim() || "Brand"
+  const brandWebsite = brand?.website?.trim() || ""
 
   async function handleSignOut() {
     setIsSigningOut(true)
@@ -67,24 +135,11 @@ export function DashboardSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <div
-          className={cn(
-            "flex items-center gap-3 px-2 py-1",
-            isCollapsed && "justify-center px-0"
-          )}
-        >
-          <div className="flex size-8 items-center justify-center rounded-none bg-primary text-primary-foreground">
-            SB
-          </div>
-          {isCollapsed ? null : (
-            <div className="grid min-w-0 flex-1 text-left">
-              <span className="truncate text-sm font-semibold">Sitebench</span>
-              <span className="truncate text-xs text-sidebar-foreground/70">
-                AI engine optimization
-              </span>
-            </div>
-          )}
-        </div>
+        <DashboardSidebarBrandHeader
+          brandName={brandName}
+          isCollapsed={isCollapsed}
+          website={brandWebsite}
+        />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

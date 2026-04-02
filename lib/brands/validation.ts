@@ -60,6 +60,10 @@ function toPublicHttpUrl(value: string) {
   }
 }
 
+export function parsePublicWebsiteUrl(value: string) {
+  return toPublicHttpUrl(value)
+}
+
 export function getWebsiteValidationError(value: string) {
   return toPublicHttpUrl(value) ? null : WEBSITE_ERROR
 }
