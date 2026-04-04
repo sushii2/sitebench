@@ -13,6 +13,7 @@ import {
   type BrandWithCompetitors,
 } from "@/lib/brands"
 import { getInsforgeBrowserClient } from "@/lib/insforge/browser-client"
+import { fetchOnboardingBrandSuggestions } from "@/lib/onboarding/client"
 import { cn } from "@/lib/utils"
 import { BrandPreview } from "@/components/brands/brand-preview"
 import { Badge } from "@/components/ui/badge"
@@ -33,6 +34,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 
 type WizardCompetitor = {
@@ -129,6 +131,29 @@ function getInitialCompetitors(brand: BrandWithCompetitors | null) {
   return seeded
 }
 
+function buildCompetitorRows(
+  competitors: Array<{ name: string; website: string }>
+) {
+  const rows = competitors.map((competitor) =>
+    createCompetitorRow({
+      name: competitor.name,
+      website: competitor.website,
+    })
+  )
+
+  while (rows.length < 3) {
+    rows.push(createCompetitorRow())
+  }
+
+  return rows
+}
+
+function hasPopulatedCompetitorRows(rows: WizardCompetitor[]) {
+  return rows.some(
+    (competitor) => competitor.name.trim() || competitor.website.trim()
+  )
+}
+
 function getInitialState(brand: BrandWithCompetitors | null) {
   return {
     brandId: brand?.id ?? null,
@@ -176,19 +201,40 @@ export function OnboardingWizard({
     competitors: [],
   })
   const [isSaving, setIsSaving] = React.useState(false)
+  const [isPrefillingStepOne, setIsPrefillingStepOne] = React.useState(false)
+  const [prefillNotice, setPrefillNotice] = React.useState<string | null>(null)
   const [saveMessage, setSaveMessage] = React.useState<string | null>(null)
   const [submitError, setSubmitError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
+    if (!brand) {
+      return
+    }
+
     const initialState = getInitialState(brand)
 
     setBrandId(initialState.brandId)
-    setCompanyName(initialState.companyName)
-    setWebsite(initialState.website)
-    setDescription(initialState.description)
-    setTopics(initialState.topics)
-    setCompetitors(initialState.competitors)
-    setCurrentStep(initialState.currentStep)
+    setCompanyName((current) => current || initialState.companyName)
+    setWebsite((current) => current || initialState.website)
+    setDescription((current) =>
+      current.trim() || !initialState.description.trim()
+        ? current
+        : initialState.description
+    )
+    setTopics((current) =>
+      current.length > 0 || initialState.topics.length === 0
+        ? current
+        : initialState.topics
+    )
+    setCompetitors((current) =>
+      hasPopulatedCompetitorRows(current) ||
+      !hasPopulatedCompetitorRows(initialState.competitors)
+        ? current
+        : initialState.competitors
+    )
+    setCurrentStep((current) =>
+      current > initialState.currentStep ? current : initialState.currentStep
+    )
   }, [brand])
 
   function clearValidation() {
@@ -431,7 +477,12 @@ export function OnboardingWizard({
     }
 
     setIsSaving(true)
-    setSaveMessage(`Saving step ${currentStep}...`)
+    if (currentStep === 1) {
+      setPrefillNotice(null)
+    }
+    setSaveMessage(
+      currentStep === 1 ? "Saving your brand basics..." : `Saving step ${currentStep}...`
+    )
     setSubmitError(null)
 
     try {
@@ -442,6 +493,53 @@ export function OnboardingWizard({
         })
 
         setBrandId(nextBrand.id)
+        setSaveMessage("Analyzing your homepage...")
+        setIsPrefillingStepOne(true)
+
+        try {
+          const suggestion = await fetchOnboardingBrandSuggestions({
+            companyName,
+            website,
+          })
+
+          const nextWarnings = [...suggestion.warnings]
+
+          if (suggestion.topics.length === 0) {
+            nextWarnings.push(
+              "The AI model could not load any topics. Review this step manually."
+            )
+          }
+
+          if (suggestion.competitors.length === 0) {
+            nextWarnings.push(
+              "The AI model could not load any competitors. Review this step manually."
+            )
+          }
+
+          console.log("[onboarding] Applying generated suggestions to wizard", {
+            competitorCount: suggestion.competitors.length,
+            descriptionLength: suggestion.description.length,
+            topics: suggestion.topics,
+            warnings: nextWarnings,
+          })
+
+          setDescription(suggestion.description)
+          setTopics(suggestion.topics)
+          setCompetitors(buildCompetitorRows(suggestion.competitors))
+
+          if (nextWarnings.length) {
+            setPrefillNotice([...new Set(nextWarnings)].join(" "))
+          }
+        } catch (error) {
+          setPrefillNotice(
+            error instanceof Error
+              ? error.message
+              : "We could not prefill the next steps. Continue manually."
+          )
+        } finally {
+          setIsPrefillingStepOne(false)
+        }
+
         setCurrentStep(2)
       }
 
@@ -628,6 +726,15 @@ export function OnboardingWizard({
             </CardContent>
           </Card>
 
+          {prefillNotice ? (
+            <div
+              role="status"
+              className="border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+            >
+              {prefillNotice}
+            </div>
+          ) : null}
+
           {submitError ? (
             <div
               role="alert"
@@ -644,9 +751,9 @@ export function OnboardingWizard({
                 {currentStep === 1
                   ? "Add the brand name and website you want us to track."
                   : currentStep === 2
-                    ? "Use a concise description. We will auto-extract this later."
+                    ? "Review the suggested description or write your own concise version."
                     : currentStep === 3
-                      ? "Add the categories where you want the brand to appear."
+                      ? "Review the suggested topics or add the categories where you want the brand to appear."
                       : "List the companies you want to benchmark against."}
               </CardDescription>
             </CardHeader>
@@ -707,8 +814,35 @@ export function OnboardingWizard({
                         <FieldDescription className="text-destructive">
                           {validation.step1CompanyName}
                         </FieldDescription>
-                      ) : null}
+                        ) : null}
                     </Field>
+
+                    {isPrefillingStepOne ? (
+                      <div className="border border-dashed border-border bg-muted/30 p-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="text-sm font-medium">
+                              Generating suggestions from your homepage
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              We&apos;re preparing a suggested description, topics,
+                              and competitors for review.
+                            </div>
+                          </div>
+                          <Badge variant="secondary">In progress</Badge>
+                        </div>
+                        <Progress
+                          className="mt-4"
+                          aria-label="Generating onboarding suggestions"
+                          value={66}
+                        />
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          <Skeleton className="h-20 w-full" />
+                          <Skeleton className="h-20 w-full" />
+                          <Skeleton className="h-28 w-full md:col-span-2" />
+                        </div>
+                      </div>
+                    ) : null}
                   </FieldGroup>
                 ) : null}
 
