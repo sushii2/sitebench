@@ -1,8 +1,7 @@
 import { Output, generateText } from "ai"
-import { openai } from "@ai-sdk/openai"
 
+import { getLanguageModel } from "@/lib/ai/provider-config"
 import { normalizeBrandTopics, normalizeDescription, normalizeWebsite } from "@/lib/brands"
-import { getOnboardingConfig } from "@/lib/onboarding/config"
 import {
   onboardingAiSuggestionSchema,
   onboardingBrandResponseSchema,
@@ -175,17 +174,14 @@ async function recoverCompetitorsWithWebSearch(input: {
   tierOneResult: OnboardingBrandResponse
 }) {
   const { output } = await generateText({
-    model: openai.responses("gpt-5.4"),
+    model: getLanguageModel("openai", {
+      capability: "webSearch",
+    }),
     output: Output.object({
       schema: onboardingCompetitorRecoverySchema,
     }),
     system: COMPETITOR_RECOVERY_SYSTEM_PROMPT,
     prompt: createTierTwoPrompt(input),
-    tools: {
-      web_search_preview: openai.tools.webSearchPreview({
-        searchContextSize: "high",
-      }),
-    },
   })
 
   return output
@@ -259,8 +255,6 @@ export function postProcessOnboardingSuggestions(
 export async function normalizeBrandOnboarding(
   input: OnboardingBrandRequest & { context: OnboardingScrapeContext }
 ): Promise<OnboardingBrandResponse> {
-  getOnboardingConfig()
-
   console.log("[onboarding] Starting Tier 1 normalization", {
     companyName: input.companyName,
     htmlLength: input.context.html.length,
@@ -269,7 +263,9 @@ export async function normalizeBrandOnboarding(
   })
 
   const { output } = await generateText({
-    model: "openai/gpt-5-mini",
+    model: getLanguageModel("openai", {
+      capability: "structuredOutput",
+    }),
     output: Output.object({
       schema: onboardingAiSuggestionSchema,
     }),

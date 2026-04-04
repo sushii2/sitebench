@@ -1,14 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mockGenerateText = vi.fn()
-const mockWebSearchPreview = vi.fn(() => ({ type: "web_search_preview" }))
-
-vi.mock("@/lib/onboarding/config", () => ({
-  getOnboardingConfig: () => ({
-    AI_GATEWAY_API_KEY: "gateway-key",
-    FIRECRAWL_API_KEY: "fc-key",
-  }),
-}))
+const mockGetLanguageModel = vi.fn(
+  (_providerId: string, options?: { capability?: string }) => ({
+    capability: options?.capability ?? "default",
+    provider: "gateway",
+  })
+)
 
 vi.mock("ai", () => ({
   Output: {
@@ -17,16 +15,8 @@ vi.mock("ai", () => ({
   generateText: mockGenerateText,
 }))
 
-vi.mock("@ai-sdk/openai", () => ({
-  openai: {
-    responses: (model: string) => ({
-      provider: "openai.responses",
-      model,
-    }),
-    tools: {
-      webSearchPreview: mockWebSearchPreview,
-    },
-  },
+vi.mock("@/lib/ai/provider-config", () => ({
+  getLanguageModel: mockGetLanguageModel,
 }))
 
 async function loadNormalizeModule() {
@@ -37,6 +27,7 @@ describe("normalizeBrandOnboarding", () => {
   beforeEach(() => {
     vi.resetModules()
     mockGenerateText.mockReset()
+    mockGetLanguageModel.mockClear()
   })
 
   it("uses raw markdown for tier 1 and conditionally augments competitors in tier 2", async () => {
@@ -109,7 +100,13 @@ describe("normalizeBrandOnboarding", () => {
     expect(tierOneCall[0].system).toContain(
       "IMPORTANT: Principles: Validate outcomes, iterate if needed, efficiency."
     )
-    expect(tierOneCall[0].model).toBe("openai/gpt-5-mini")
+    expect(mockGetLanguageModel).toHaveBeenNthCalledWith(1, "openai", {
+      capability: "structuredOutput",
+    })
+    expect(tierOneCall[0].model).toEqual({
+      capability: "structuredOutput",
+      provider: "gateway",
+    })
     expect(tierOneCall[0].prompt).toContain("Homepage URL: https://acme.com")
     expect(tierOneCall[0].prompt).toContain(
       "Homepage HTML:\n<html><body><h1>Acme</h1><p>Measure brand visibility across AI answers.</p></body></html>"
@@ -120,16 +117,16 @@ describe("normalizeBrandOnboarding", () => {
     expect(tierOneCall[0].prompt).not.toContain('"title"')
     expect(tierOneCall[0].prompt).not.toContain('"keywords"')
 
+    expect(mockGetLanguageModel).toHaveBeenNthCalledWith(2, "openai", {
+      capability: "webSearch",
+    })
     expect(tierTwoCall[0].model).toEqual({
-      model: "gpt-5.4",
-      provider: "openai.responses",
+      capability: "webSearch",
+      provider: "gateway",
     })
     expect(tierTwoCall[0].prompt).toContain("Tier 1 description")
     expect(tierTwoCall[0].prompt).toContain("Tier 1 topics")
-    expect(tierTwoCall[0].tools).toEqual({
-      web_search_preview: { type: "web_search_preview" },
-    })
-    expect(mockWebSearchPreview).toHaveBeenCalledTimes(1)
+    expect(tierTwoCall[0].tools).toBeUndefined()
 
     expect(result.description).toHaveLength(500)
     expect(result.topics).toEqual([
