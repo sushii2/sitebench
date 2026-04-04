@@ -11,6 +11,7 @@ const mockRefreshAuthState = vi.fn()
 const mockSaveBrandDraftStep = vi.fn()
 const mockReplaceBrandCompetitors = vi.fn()
 const mockMarkOnboardingComplete = vi.fn()
+const mockFetchOnboardingBrandSuggestions = vi.fn()
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -27,6 +28,10 @@ vi.mock("@/lib/insforge/browser-client", () => ({
     auth: {},
     database: {},
   }),
+}))
+
+vi.mock("@/lib/onboarding/client", () => ({
+  fetchOnboardingBrandSuggestions: mockFetchOnboardingBrandSuggestions,
 }))
 
 vi.mock("@/lib/brands", async () => {
@@ -94,6 +99,21 @@ async function renderWizard(brand: BrandWithCompetitors | null = null) {
   return render(<OnboardingGate />)
 }
 
+async function renderWizardComponent(
+  brand: BrandWithCompetitors | null = null
+) {
+  const { OnboardingWizard } = await import(
+    "@/components/onboarding/onboarding-wizard"
+  )
+
+  return render(
+    <OnboardingWizard
+      brand={brand}
+      refreshAuthState={mockRefreshAuthState}
+    />
+  )
+}
+
 beforeEach(() => {
   mockReplace.mockReset()
   mockUseAuth.mockReset()
@@ -101,7 +121,20 @@ beforeEach(() => {
   mockSaveBrandDraftStep.mockReset()
   mockReplaceBrandCompetitors.mockReset()
   mockMarkOnboardingComplete.mockReset()
+  mockFetchOnboardingBrandSuggestions.mockReset()
   process.env.NEXT_PUBLIC_LOGO_DEV_PUBLISHABLE_KEY = "pk_test_123"
+
+  mockFetchOnboardingBrandSuggestions.mockResolvedValue({
+    competitors: [
+      { name: "Competitor 1", website: "https://competitor-1.com" },
+      { name: "Competitor 2", website: "https://competitor-2.com" },
+      { name: "Competitor 3", website: "https://competitor-3.com" },
+      { name: "Competitor 4", website: "https://competitor-4.com" },
+    ],
+    description: "Suggested description",
+    topics: ["ai search", "google ai mode", "perplexity"],
+    warnings: [],
+  })
 
   mockRefreshAuthState.mockResolvedValue({
     authenticatedRedirectPath: "/dashboard",
@@ -236,11 +269,63 @@ describe("Onboarding wizard", () => {
         website: "acme.com",
       })
     )
+    await waitFor(() =>
+      expect(mockFetchOnboardingBrandSuggestions).toHaveBeenCalledWith({
+        companyName: "Acme",
+        website: "acme.com",
+      })
+    )
 
     await waitFor(() =>
       expect(screen.getAllByText("Description").length).toBeGreaterThan(0)
     )
     expect(screen.getByText("Step 2 of 4")).toBeInTheDocument()
+    expect(screen.getByDisplayValue("Suggested description")).toBeInTheDocument()
+  })
+
+  it("shows an inline loading state while step 1 suggestions are in flight", async () => {
+    const user = userEvent.setup()
+
+    let resolveSuggestions: (
+      value: {
+        competitors: Array<{ name: string; website: string }>
+        description: string
+        topics: string[]
+        warnings: string[]
+      }
+    ) => void
+
+    mockSaveBrandDraftStep.mockResolvedValue(
+      makeBrand({
+        company_name: "Acme",
+        website: "https://acme.com",
+      })
+    )
+    mockFetchOnboardingBrandSuggestions.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSuggestions = resolve
+        })
+    )
+
+    await renderWizard()
+
+    await user.type(screen.getByLabelText("Company website"), "acme.com")
+    await user.type(screen.getByLabelText("Company name"), "Acme")
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+
+    expect(
+      await screen.findByText("Generating suggestions from your homepage")
+    ).toBeInTheDocument()
+
+    resolveSuggestions!({
+      competitors: [],
+      description: "Suggested description",
+      topics: ["ai search", "google ai mode", "perplexity"],
+      warnings: [],
+    })
+
+    expect(await screen.findByText("Step 2 of 4")).toBeInTheDocument()
   })
 
   it("blocks invalid step 2 submissions", async () => {
@@ -355,6 +440,258 @@ describe("Onboarding wizard", () => {
     expect(
       screen.getByDisplayValue("https://competitor-2.com")
     ).toBeInTheDocument()
+  })
+
+  it("prefills the later onboarding steps from generated suggestions", async () => {
+    const user = userEvent.setup()
+
+    mockSaveBrandDraftStep.mockResolvedValue(
+      makeBrand({
+        company_name: "Acme",
+        website: "https://acme.com",
+      })
+    )
+
+    await renderWizard()
+
+    await user.type(screen.getByLabelText("Company website"), "acme.com")
+    await user.type(screen.getByLabelText("Company name"), "Acme")
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+
+    expect(await screen.findByDisplayValue("Suggested description")).toBeInTheDocument()
+
+    mockSaveBrandDraftStep.mockResolvedValue(
+      makeBrand({
+        company_name: "Acme",
+        description: "Suggested description",
+        topics: ["ai search", "google ai mode", "perplexity"],
+        website: "https://acme.com",
+      })
+    )
+
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+
+    expect(await screen.findByText("ai search")).toBeInTheDocument()
+    expect(screen.getByText("google ai mode")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+
+    expect(await screen.findByDisplayValue("Competitor 1")).toBeInTheDocument()
+    expect(
+      screen.getByDisplayValue("https://competitor-4.com")
+    ).toBeInTheDocument()
+  })
+
+  it("logs the fetched onboarding suggestions before applying them to wizard state", async () => {
+    const user = userEvent.setup()
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+
+    mockSaveBrandDraftStep.mockResolvedValue(
+      makeBrand({
+        company_name: "Acme",
+        website: "https://acme.com",
+      })
+    )
+
+    await renderWizard()
+
+    await user.type(screen.getByLabelText("Company website"), "acme.com")
+    await user.type(screen.getByLabelText("Company name"), "Acme")
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+
+    expect(await screen.findByDisplayValue("Suggested description")).toBeInTheDocument()
+    expect(logSpy).toHaveBeenCalledWith(
+      "[onboarding] Applying generated suggestions to wizard",
+      {
+        competitorCount: 4,
+        descriptionLength: "Suggested description".length,
+        topics: ["ai search", "google ai mode", "perplexity"],
+        warnings: [],
+      }
+    )
+
+    logSpy.mockRestore()
+  })
+
+  it("shows warnings from generated suggestions and still advances", async () => {
+    const user = userEvent.setup()
+
+    mockSaveBrandDraftStep.mockResolvedValue(
+      makeBrand({
+        company_name: "Acme",
+        website: "https://acme.com",
+      })
+    )
+    mockFetchOnboardingBrandSuggestions.mockResolvedValue({
+      competitors: [],
+      description: "",
+      topics: [],
+      warnings: [
+        "We found fewer than 3 strong topics. Review and add topics before continuing.",
+      ],
+    })
+
+    await renderWizard()
+
+    await user.type(screen.getByLabelText("Company website"), "acme.com")
+    await user.type(screen.getByLabelText("Company name"), "Acme")
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+
+    expect(await screen.findByText("Step 2 of 4")).toBeInTheDocument()
+    expect(
+      screen.getByText(/We found fewer than 3 strong topics\./)
+    ).toBeInTheDocument()
+
+    mockSaveBrandDraftStep.mockResolvedValue(
+      makeBrand({
+        company_name: "Acme",
+        description: "Manual description",
+        topics: [],
+        website: "https://acme.com",
+      })
+    )
+
+    await user.type(
+      screen.getByLabelText("Business description"),
+      "Manual description"
+    )
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+
+    expect(await screen.findByText("Step 3 of 4")).toBeInTheDocument()
+    expect(
+      screen.getByText(/We found fewer than 3 strong topics\./)
+    ).toBeInTheDocument()
+  })
+
+  it("shows a page warning when the AI could not load any topics or competitors", async () => {
+    const user = userEvent.setup()
+
+    mockSaveBrandDraftStep.mockResolvedValue(
+      makeBrand({
+        company_name: "Acme",
+        website: "https://acme.com",
+      })
+    )
+    mockFetchOnboardingBrandSuggestions.mockResolvedValue({
+      competitors: [],
+      description: "Suggested description",
+      topics: [],
+      warnings: [],
+    })
+
+    await renderWizard()
+
+    await user.type(screen.getByLabelText("Company website"), "acme.com")
+    await user.type(screen.getByLabelText("Company name"), "Acme")
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+
+    expect(await screen.findByText("Step 2 of 4")).toBeInTheDocument()
+    expect(
+      screen.getByText(/The AI model could not load any topics\./)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/The AI model could not load any competitors\./)
+    ).toBeInTheDocument()
+  })
+
+  it("replaces local generated values when step 1 is submitted again", async () => {
+    const user = userEvent.setup()
+
+    mockSaveBrandDraftStep.mockResolvedValue(
+      makeBrand({
+        company_name: "Acme",
+        website: "https://acme.com",
+      })
+    )
+    mockFetchOnboardingBrandSuggestions
+      .mockResolvedValueOnce({
+        competitors: [
+          { name: "Competitor 1", website: "https://competitor-1.com" },
+        ],
+        description: "First suggestion",
+        topics: ["ai search", "perplexity", "brand search"],
+        warnings: [],
+      })
+      .mockResolvedValueOnce({
+        competitors: [
+          { name: "Competitor X", website: "https://competitor-x.com" },
+        ],
+        description: "Second suggestion",
+        topics: ["llm visibility", "answer engines", "ai citations"],
+        warnings: [],
+      })
+
+    await renderWizard()
+
+    await user.type(screen.getByLabelText("Company website"), "acme.com")
+    await user.type(screen.getByLabelText("Company name"), "Acme")
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+
+    expect(await screen.findByDisplayValue("First suggestion")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Back" }))
+    await user.clear(screen.getByLabelText("Company website"))
+    await user.type(screen.getByLabelText("Company website"), "acme.ai")
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+
+    expect(await screen.findByDisplayValue("Second suggestion")).toBeInTheDocument()
+
+    mockSaveBrandDraftStep.mockResolvedValue(
+      makeBrand({
+        company_name: "Acme",
+        description: "Second suggestion",
+        topics: ["llm visibility", "answer engines", "ai citations"],
+        website: "https://acme.ai",
+      })
+    )
+
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    expect(await screen.findByText("llm visibility")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    expect(await screen.findByDisplayValue("Competitor X")).toBeInTheDocument()
+  })
+
+  it("preserves generated topics and competitors when the brand prop updates mid-onboarding", async () => {
+    const user = userEvent.setup()
+
+    mockSaveBrandDraftStep.mockResolvedValue(
+      makeBrand({
+        company_name: "Acme",
+        website: "https://acme.com",
+      })
+    )
+
+    const view = await renderWizardComponent()
+
+    await user.type(screen.getByLabelText("Company website"), "acme.com")
+    await user.type(screen.getByLabelText("Company name"), "Acme")
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+
+    expect(await screen.findByDisplayValue("Suggested description")).toBeInTheDocument()
+
+    const { OnboardingWizard } = await import(
+      "@/components/onboarding/onboarding-wizard"
+    )
+
+    view.rerender(
+      <OnboardingWizard
+        brand={makeBrand({
+          company_name: "Acme",
+          description: "Suggested description",
+          topics: [],
+          website: "https://acme.com",
+        })}
+        refreshAuthState={mockRefreshAuthState}
+      />
+    )
+
+    expect(await screen.findByText("ai search")).toBeInTheDocument()
+    expect(screen.getByText("google ai mode")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+
+    expect(await screen.findByDisplayValue("Competitor 1")).toBeInTheDocument()
   })
 
   it("adds and removes competitor rows, then completes onboarding", async () => {
