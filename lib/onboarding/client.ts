@@ -1,8 +1,13 @@
 import { getInsforgeBrowserClient } from "@/lib/insforge/browser-client"
 import {
+  completeOnboardingRequestSchema,
   onboardingBrandRequestSchema,
   onboardingBrandResponseSchema,
+  onboardingTopicPromptRequestSchema,
+  onboardingTopicPromptResponseSchema,
+  type CompleteOnboardingRequest,
   type OnboardingBrandRequest,
+  type OnboardingTopicPromptRequest,
 } from "@/lib/onboarding/types"
 
 function getAuthorizationHeader() {
@@ -44,3 +49,66 @@ export async function fetchOnboardingBrandSuggestions(
   return onboardingBrandResponseSchema.parse(data)
 }
 
+export async function fetchOnboardingTopicPrompts(
+  input: OnboardingTopicPromptRequest
+) {
+  const payload = onboardingTopicPromptRequestSchema.parse(input)
+  const authorization = getAuthorizationHeader()
+
+  if (!authorization) {
+    throw new Error("You must be signed in to generate onboarding prompts.")
+  }
+
+  const response = await fetch("/api/onboarding/topic-prompts", {
+    body: JSON.stringify(payload),
+    headers: {
+      Authorization: authorization,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  })
+
+  const data = await response.json().catch(() => null)
+
+  if (!response.ok) {
+    const message =
+      typeof data?.error?.message === "string"
+        ? data.error.message
+        : "Unable to generate onboarding prompts."
+
+    throw new Error(message)
+  }
+
+  return onboardingTopicPromptResponseSchema.parse(data)
+}
+
+export async function completeOnboarding(input: CompleteOnboardingRequest) {
+  const payload = completeOnboardingRequestSchema.parse(input)
+  const authorization = getAuthorizationHeader()
+
+  if (!authorization) {
+    throw new Error("You must be signed in to complete onboarding.")
+  }
+
+  const response = await fetch("/api/onboarding/complete", {
+    body: JSON.stringify(payload),
+    headers: {
+      Authorization: authorization,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  })
+
+  const data = await response.json().catch(() => null)
+
+  if (!response.ok) {
+    const message =
+      typeof data?.error?.message === "string"
+        ? data.error.message
+        : "Unable to complete onboarding."
+
+    throw new Error(message)
+  }
+
+  return data
+}
