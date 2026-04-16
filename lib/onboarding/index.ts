@@ -1,7 +1,9 @@
 export * from "./auth"
 export * from "./client"
 export * from "./config"
+export * from "./finalize"
 export * from "./firecrawl"
 export * from "./normalize"
+export * from "./topic-prompt-generator"
+export * from "./topic-prompt-templates"
 export * from "./types"
-

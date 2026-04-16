@@ -9,8 +9,8 @@ const mockReplace = vi.fn()
 const mockUseAuth = vi.fn()
 const mockRefreshAuthState = vi.fn()
 const mockSaveBrandDraftStep = vi.fn()
-const mockReplaceBrandCompetitors = vi.fn()
-const mockMarkOnboardingComplete = vi.fn()
+const mockFetchOnboardingTopicPrompts = vi.fn()
+const mockCompleteOnboarding = vi.fn()
 const mockFetchOnboardingBrandSuggestions = vi.fn()
 
 vi.mock("next/navigation", () => ({
@@ -31,7 +31,9 @@ vi.mock("@/lib/insforge/browser-client", () => ({
 }))
 
 vi.mock("@/lib/onboarding/client", () => ({
+  completeOnboarding: mockCompleteOnboarding,
   fetchOnboardingBrandSuggestions: mockFetchOnboardingBrandSuggestions,
+  fetchOnboardingTopicPrompts: mockFetchOnboardingTopicPrompts,
 }))
 
 vi.mock("@/lib/brands", async () => {
@@ -40,8 +42,6 @@ vi.mock("@/lib/brands", async () => {
 
   return {
     ...actual,
-    markOnboardingComplete: mockMarkOnboardingComplete,
-    replaceBrandCompetitors: mockReplaceBrandCompetitors,
     saveBrandDraftStep: mockSaveBrandDraftStep,
   }
 })
@@ -119,8 +119,8 @@ beforeEach(() => {
   mockUseAuth.mockReset()
   mockRefreshAuthState.mockReset()
   mockSaveBrandDraftStep.mockReset()
-  mockReplaceBrandCompetitors.mockReset()
-  mockMarkOnboardingComplete.mockReset()
+  mockFetchOnboardingTopicPrompts.mockReset()
+  mockCompleteOnboarding.mockReset()
   mockFetchOnboardingBrandSuggestions.mockReset()
   process.env.NEXT_PUBLIC_LOGO_DEV_PUBLISHABLE_KEY = "pk_test_123"
 
@@ -135,6 +135,68 @@ beforeEach(() => {
     topics: ["ai search", "google ai mode", "perplexity"],
     warnings: [],
   })
+  mockFetchOnboardingTopicPrompts.mockResolvedValue({
+    topics: [
+      {
+        prompts: [
+          {
+            addedVia: "ai_suggested",
+            promptText:
+              "Which platforms are best for measuring brand visibility across ChatGPT, Gemini, and Perplexity for brand teams?",
+          },
+          {
+            addedVia: "ai_suggested",
+            promptText:
+              "For brand teams evaluating AI visibility platforms, how does Acme compare with Competitor 1 and Competitor 2 on coverage across AI answers, citation tracking, and executive reporting?",
+          },
+        ],
+        source: "ai_suggested",
+        topicName: "ai search",
+      },
+      {
+        prompts: [
+          {
+            addedVia: "ai_suggested",
+            promptText:
+              "What platforms help brand teams with measuring brand visibility across Google AI Mode, ChatGPT, and Gemini?",
+          },
+          {
+            addedVia: "ai_suggested",
+            promptText:
+              "How does Acme stack up against Competitor 1 and Competitor 2 for coverage across AI answers, citation tracking, and executive reporting?",
+          },
+        ],
+        source: "ai_suggested",
+        topicName: "google ai mode",
+      },
+      {
+        prompts: [
+          {
+            addedVia: "ai_suggested",
+            promptText:
+              "Which software do brand teams trust for measuring brand visibility across Perplexity, ChatGPT, and Gemini?",
+          },
+          {
+            addedVia: "ai_suggested",
+            promptText:
+              "Which platform is stronger for teams that need coverage across AI answers, citation tracking, and executive reporting: Acme or Competitor 1 and Competitor 2?",
+          },
+        ],
+        source: "ai_suggested",
+        topicName: "perplexity",
+      },
+    ],
+    warnings: [],
+  })
+  mockCompleteOnboarding.mockResolvedValue(
+    makeBrand({
+      company_name: "Acme",
+      description: "Description",
+      onboarding_completed_at: "2026-01-02T00:00:00.000Z",
+      topics: ["ai search", "google ai mode", "perplexity"],
+      website: "https://acme.com",
+    })
+  )
 
   mockRefreshAuthState.mockResolvedValue({
     authenticatedRedirectPath: "/dashboard",
@@ -350,18 +412,38 @@ describe("Onboarding wizard", () => {
   it("adds normalized topics, rejects duplicates, and enforces the cap", async () => {
     const user = userEvent.setup()
 
-    mockSaveBrandDraftStep.mockResolvedValue(
-      makeBrand({
-        company_name: "Acme",
-        description: "Description",
-        topics: ["ai search", "google ai mode", "perplexity"],
-        website: "https://acme.com",
-      })
-    )
-
     await renderWizard(
       makeBrand({
         company_name: "Acme",
+        competitors: [
+          {
+            brand_id: "brand-1",
+            created_at: "2026-01-01T00:00:00.000Z",
+            id: "competitor-1",
+            name: "Competitor 1",
+            updated_at: "2026-01-01T00:00:00.000Z",
+            user_id: "user-1",
+            website: "https://competitor-1.com",
+          },
+          {
+            brand_id: "brand-1",
+            created_at: "2026-01-01T00:00:00.000Z",
+            id: "competitor-2",
+            name: "Competitor 2",
+            updated_at: "2026-01-01T00:00:00.000Z",
+            user_id: "user-1",
+            website: "https://competitor-2.com",
+          },
+          {
+            brand_id: "brand-1",
+            created_at: "2026-01-01T00:00:00.000Z",
+            id: "competitor-3",
+            name: "Competitor 3",
+            updated_at: "2026-01-01T00:00:00.000Z",
+            user_id: "user-1",
+            website: "https://competitor-3.com",
+          },
+        ],
         description: "Description",
         topics: [],
         website: "https://acme.com",
@@ -471,14 +553,18 @@ describe("Onboarding wizard", () => {
 
     await user.click(screen.getByRole("button", { name: "Save and continue" }))
 
-    expect(await screen.findByText("ai search")).toBeInTheDocument()
-    expect(screen.getByText("google ai mode")).toBeInTheDocument()
-
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
-
     expect(await screen.findByDisplayValue("Competitor 1")).toBeInTheDocument()
     expect(
       screen.getByDisplayValue("https://competitor-4.com")
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+
+    expect(await screen.findByText(/Topic 1: ai search/i)).toBeInTheDocument()
+    expect(
+      screen.getByDisplayValue(
+        "Which platforms are best for measuring brand visibility across ChatGPT, Gemini, and Perplexity for brand teams?"
+      )
     ).toBeInTheDocument()
   })
 
@@ -607,6 +693,8 @@ describe("Onboarding wizard", () => {
       .mockResolvedValueOnce({
         competitors: [
           { name: "Competitor 1", website: "https://competitor-1.com" },
+          { name: "Competitor 2", website: "https://competitor-2.com" },
+          { name: "Competitor 3", website: "https://competitor-3.com" },
         ],
         description: "First suggestion",
         topics: ["ai search", "perplexity", "brand search"],
@@ -615,6 +703,8 @@ describe("Onboarding wizard", () => {
       .mockResolvedValueOnce({
         competitors: [
           { name: "Competitor X", website: "https://competitor-x.com" },
+          { name: "Competitor Y", website: "https://competitor-y.com" },
+          { name: "Competitor Z", website: "https://competitor-z.com" },
         ],
         description: "Second suggestion",
         topics: ["llm visibility", "answer engines", "ai citations"],
@@ -646,10 +736,10 @@ describe("Onboarding wizard", () => {
     )
 
     await user.click(screen.getByRole("button", { name: "Save and continue" }))
-    expect(await screen.findByText("llm visibility")).toBeInTheDocument()
+    expect(await screen.findByDisplayValue("Competitor X")).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "Save and continue" }))
-    expect(await screen.findByDisplayValue("Competitor X")).toBeInTheDocument()
+    expect(await screen.findByText(/Topic 1: llm visibility/i)).toBeInTheDocument()
   })
 
   it("preserves generated topics and competitors when the brand prop updates mid-onboarding", async () => {
@@ -686,37 +776,14 @@ describe("Onboarding wizard", () => {
       />
     )
 
-    expect(await screen.findByText("ai search")).toBeInTheDocument()
-    expect(screen.getByText("google ai mode")).toBeInTheDocument()
+    expect(await screen.findByDisplayValue("Competitor 1")).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "Save and continue" }))
-
-    expect(await screen.findByDisplayValue("Competitor 1")).toBeInTheDocument()
+    expect(await screen.findByText(/Topic 1: ai search/i)).toBeInTheDocument()
   })
 
   it("adds and removes competitor rows, then completes onboarding", async () => {
     const user = userEvent.setup()
-
-    mockReplaceBrandCompetitors.mockResolvedValue([
-      {
-        brand_id: "brand-1",
-        created_at: "2026-01-01T00:00:00.000Z",
-        id: "competitor-1",
-        name: "Competitor 1",
-        updated_at: "2026-01-01T00:00:00.000Z",
-        user_id: "user-1",
-        website: "https://competitor-1.com",
-      },
-    ])
-    mockMarkOnboardingComplete.mockResolvedValue(
-      makeBrand({
-        company_name: "Acme",
-        description: "Description",
-        onboarding_completed_at: "2026-01-02T00:00:00.000Z",
-        topics: ["ai search", "google ai mode", "perplexity"],
-        website: "https://acme.com",
-      })
-    )
 
     await renderWizard(
       makeBrand({
@@ -744,23 +811,21 @@ describe("Onboarding wizard", () => {
     await user.type(nameInputs[2]!, "Competitor 3")
     await user.type(websiteInputs[2]!, "competitor-3.com")
 
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    expect(await screen.findByRole("button", { name: "Complete setup" })).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Complete setup" }))
 
     await waitFor(() =>
-      expect(mockReplaceBrandCompetitors).toHaveBeenCalledWith(
-        expect.any(Object),
-        "brand-1",
-        [
-          { name: "Competitor 1", website: "competitor-1.com" },
-          { name: "Competitor 2", website: "competitor-2.com" },
-          { name: "Competitor 3", website: "competitor-3.com" },
-        ]
-      )
-    )
-    await waitFor(() =>
-      expect(mockMarkOnboardingComplete).toHaveBeenCalledWith(
-        expect.any(Object),
-        "brand-1"
+      expect(mockCompleteOnboarding).toHaveBeenCalledWith(
+        expect.objectContaining({
+          companyName: "Acme",
+          competitors: [
+            { name: "Competitor 1", website: "competitor-1.com" },
+            { name: "Competitor 2", website: "competitor-2.com" },
+            { name: "Competitor 3", website: "competitor-3.com" },
+          ],
+          projectId: "brand-1",
+        })
       )
     )
     await waitFor(() => expect(mockRefreshAuthState).toHaveBeenCalledTimes(1))
@@ -793,21 +858,7 @@ describe("Onboarding wizard", () => {
 
   it("shows an inline error when final completion fails", async () => {
     const user = userEvent.setup()
-
-    mockReplaceBrandCompetitors.mockResolvedValue([
-      {
-        brand_id: "brand-1",
-        created_at: "2026-01-01T00:00:00.000Z",
-        id: "competitor-1",
-        name: "Competitor 1",
-        updated_at: "2026-01-01T00:00:00.000Z",
-        user_id: "user-1",
-        website: "https://competitor-1.com",
-      },
-    ])
-    mockMarkOnboardingComplete.mockRejectedValue(
-      new Error("Completion unavailable")
-    )
+    mockCompleteOnboarding.mockRejectedValue(new Error("Completion unavailable"))
 
     await renderWizard(
       makeBrand({
@@ -828,6 +879,7 @@ describe("Onboarding wizard", () => {
     await user.type(nameInputs[2]!, "Competitor 3")
     await user.type(websiteInputs[2]!, "competitor-3.com")
 
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
     await user.click(screen.getByRole("button", { name: "Complete setup" }))
 
     expect(
@@ -856,9 +908,9 @@ describe("Onboarding wizard", () => {
     await user.type(nameInputs[1]!, "Competitor 2")
     await user.type(websiteInputs[1]!, "competitor-2.com")
 
-    await user.click(screen.getByRole("button", { name: "Complete setup" }))
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
 
-    expect(mockReplaceBrandCompetitors).not.toHaveBeenCalled()
+    expect(mockFetchOnboardingTopicPrompts).not.toHaveBeenCalled()
     expect(
       await screen.findByText("Add at least 3 competitors.")
     ).toBeInTheDocument()
@@ -886,9 +938,10 @@ describe("Onboarding wizard", () => {
     await user.type(nameInputs[2]!, "Competitor 3")
     await user.type(websiteInputs[2]!, "competitor-3.com")
 
+    await user.click(screen.getByRole("button", { name: "Save and continue" }))
     await user.click(screen.getByRole("button", { name: "Complete setup" }))
 
-    expect(mockReplaceBrandCompetitors).not.toHaveBeenCalled()
+    expect(mockCompleteOnboarding).not.toHaveBeenCalled()
     expect(await screen.findByText("Step 1 of 4")).toBeInTheDocument()
     expect(screen.getByText("Enter a valid website")).toBeInTheDocument()
     expect(screen.getByText("Enter a valid company name")).toBeInTheDocument()

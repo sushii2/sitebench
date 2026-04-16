@@ -6,14 +6,20 @@ import { useRouter } from "next/navigation"
 import {
   getCompanyNameValidationError,
   getWebsiteValidationError,
-  markOnboardingComplete,
   normalizeBrandTopics,
-  replaceBrandCompetitors,
   saveBrandDraftStep,
   type BrandWithCompetitors,
 } from "@/lib/brands"
 import { getInsforgeBrowserClient } from "@/lib/insforge/browser-client"
-import { fetchOnboardingBrandSuggestions } from "@/lib/onboarding/client"
+import {
+  completeOnboarding,
+  fetchOnboardingBrandSuggestions,
+  fetchOnboardingTopicPrompts,
+} from "@/lib/onboarding/client"
+import type {
+  OnboardingPromptDraft,
+  OnboardingTopicDraft,
+} from "@/lib/onboarding/types"
 import { cn } from "@/lib/utils"
 import { BrandPreview } from "@/components/brands/brand-preview"
 import { Badge } from "@/components/ui/badge"
@@ -43,6 +49,15 @@ type WizardCompetitor = {
   website: string
 }
 
+type WizardPromptDraft = OnboardingPromptDraft & {
+  id: string
+}
+
+type WizardTopicDraft = Omit<OnboardingTopicDraft, "prompts"> & {
+  id: string
+  prompts: WizardPromptDraft[]
+}
+
 type OnboardingWizardProps = {
   brand: BrandWithCompetitors | null
   refreshAuthState: () => Promise<unknown>
@@ -57,6 +72,7 @@ type ValidationState = {
   step1Website?: string
   step3?: string
   step4?: string
+  topicPromptErrors: Record<string, string | undefined>
   topicInput?: string
 }
 
@@ -74,16 +90,18 @@ const stepMeta = [
   {
     description: "Where you want to show up",
     key: 3 as const,
-    label: "Topics",
+    label: "Competitors",
   },
   {
-    description: "Who you compete with",
+    description: "Topics and prompts to track",
     key: 4 as const,
-    label: "Competitors",
+    label: "Topics & prompts",
   },
 ] as const
 
 let competitorSequence = 0
+let topicSequence = 0
+let promptSequence = 0
 
 function createCompetitorRow(
   competitor?: Partial<WizardCompetitor>
@@ -106,8 +124,12 @@ function getInitialStep(brand: BrandWithCompetitors | null): StepKey {
     return 2
   }
 
-  if (brand.topics.length < 3) {
+  if (brand.competitors.length < 3) {
     return 3
+  }
+
+  if (brand.topics.length < 3) {
+    return 4
   }
 
   return 4
@@ -148,6 +170,42 @@ function buildCompetitorRows(
   return rows
 }
 
+function createPromptDraft(
+  prompt?: Partial<WizardPromptDraft>
+): WizardPromptDraft {
+  promptSequence += 1
+
+  return {
+    addedVia: prompt?.addedVia ?? "user_created",
+    id: prompt?.id ?? `prompt-row-${promptSequence}`,
+    promptText: prompt?.promptText ?? "",
+  }
+}
+
+function createTopicDraft(topic?: Partial<WizardTopicDraft>): WizardTopicDraft {
+  topicSequence += 1
+
+  return {
+    id: topic?.id ?? `topic-row-${topicSequence}`,
+    prompts: topic?.prompts?.map((prompt) => createPromptDraft(prompt)) ?? [],
+    source: topic?.source ?? "user_added",
+    topicId: topic?.topicId,
+    topicName: topic?.topicName ?? "",
+  }
+}
+
+function buildTopicDrafts(
+  topics: string[],
+  source: WizardTopicDraft["source"] = "user_added"
+) {
+  return normalizeBrandTopics(topics).map((topicName) =>
+    createTopicDraft({
+      source,
+      topicName,
+    })
+  )
+}
+
 function hasPopulatedCompetitorRows(rows: WizardCompetitor[]) {
   return rows.some(
     (competitor) => competitor.name.trim() || competitor.website.trim()
@@ -162,7 +220,7 @@ function getInitialState(brand: BrandWithCompetitors | null) {
     currentStep: getInitialStep(brand),
     description: brand?.description ?? "",
     topicInput: "",
-    topics: brand?.topics ?? [],
+    topics: buildTopicDrafts(brand?.topics ?? []),
     website: brand?.website ?? "",
   }
 }
@@ -187,8 +245,8 @@ export function OnboardingWizard({
   const [description, setDescription] = React.useState(
     () => brand?.description ?? ""
   )
-  const [topics, setTopics] = React.useState<string[]>(
-    () => brand?.topics ?? []
+  const [topics, setTopics] = React.useState<WizardTopicDraft[]>(() =>
+    buildTopicDrafts(brand?.topics ?? [])
   )
   const [topicInput, setTopicInput] = React.useState("")
   const [competitors, setCompetitors] = React.useState<WizardCompetitor[]>(() =>
@@ -199,8 +257,11 @@ export function OnboardingWizard({
   )
   const [validation, setValidation] = React.useState<ValidationState>({
     competitors: [],
+    topicPromptErrors: {},
   })
   const [isSaving, setIsSaving] = React.useState(false)
+  const [isGeneratingTopicPrompts, setIsGeneratingTopicPrompts] =
+    React.useState(false)
   const [isPrefillingStepOne, setIsPrefillingStepOne] = React.useState(false)
   const [prefillNotice, setPrefillNotice] = React.useState<string | null>(null)
   const [saveMessage, setSaveMessage] = React.useState<string | null>(null)
@@ -240,6 +301,7 @@ export function OnboardingWizard({
   function clearValidation() {
     setValidation({
       competitors: [],
+      topicPromptErrors: {},
     })
   }
 
@@ -257,34 +319,66 @@ export function OnboardingWizard({
       return
     }
 
-    const normalized = normalizeBrandTopics([...topics, candidate])
+    const normalizedTopics = normalizeBrandTopics([
+      ...topics.map((topic) => topic.topicName),
+      candidate,
+    ])
 
     if (topics.length >= 10) {
       setTopicMessage("You can add up to 10 topics.")
       return
     }
 
-    if (normalized.length === topics.length) {
+    if (normalizedTopics.length === topics.length) {
       setTopicMessage("That topic is already added.")
       return
     }
 
-    if (normalized.length > 10) {
+    if (normalizedTopics.length > 10) {
       setTopicMessage("You can add up to 10 topics.")
       return
     }
 
-    setTopics(normalized)
+    const topicName = normalizedTopics.at(-1)
+
+    if (!topicName) {
+      return
+    }
+
+    const nextTopic = createTopicDraft({
+      source: "user_added",
+      topicName,
+    })
+
+    setTopics((current) => [...current, nextTopic])
     setTopicInput("")
     setTopicMessage(undefined)
     setValidation((current) => ({
       ...current,
       step3: undefined,
+      step4: undefined,
     }))
+
+    if (currentStep === 4) {
+      void generateTopicPrompts([nextTopic])
+    }
   }
 
   function removeTopic(topic: string) {
-    setTopics((current) => current.filter((value) => value !== topic))
+    setTopics((current) => current.filter((value) => value.topicName !== topic))
+    setValidation((current) => {
+      const nextErrors = { ...current.topicPromptErrors }
+      const removedTopic = topics.find((value) => value.topicName === topic)
+
+      if (removedTopic) {
+        delete nextErrors[removedTopic.id]
+      }
+
+      return {
+        ...current,
+        topicPromptErrors: nextErrors,
+      }
+    })
   }
 
   function updateCompetitor(
@@ -330,6 +424,7 @@ export function OnboardingWizard({
   function validateStepOne() {
     const nextValidation: ValidationState = {
       competitors: [],
+      topicPromptErrors: {},
     }
 
     if (!website.trim()) {
@@ -360,6 +455,7 @@ export function OnboardingWizard({
       setValidation({
         competitors: [],
         description: "Tell us about your business",
+        topicPromptErrors: {},
       })
 
       return false
@@ -369,6 +465,7 @@ export function OnboardingWizard({
       setValidation({
         competitors: [],
         description: "Keep the description under 500 characters",
+        topicPromptErrors: {},
       })
 
       return false
@@ -380,21 +477,10 @@ export function OnboardingWizard({
   }
 
   function validateStepThree() {
-    if (topics.length < 3) {
-      setValidation({
-        competitors: [],
-        step3: "Add at least 3 topics.",
-      })
-
-      return false
-    }
-
-    clearValidation()
-
-    return true
+    return validateCompetitorStep()
   }
 
-  function validateStepFour() {
+  function validateCompetitorStep() {
     const populatedCompetitors = competitors.filter(
       (competitor) => competitor.name.trim() || competitor.website.trim()
     )
@@ -402,7 +488,8 @@ export function OnboardingWizard({
     if (populatedCompetitors.length < 3) {
       setValidation({
         competitors: [],
-        step4: "Add at least 3 competitors.",
+        step3: "Add at least 3 competitors.",
+        topicPromptErrors: {},
       })
 
       return false
@@ -411,7 +498,8 @@ export function OnboardingWizard({
     if (populatedCompetitors.length > 20) {
       setValidation({
         competitors: [],
-        step4: "You can add up to 20 competitors.",
+        step3: "You can add up to 20 competitors.",
+        topicPromptErrors: {},
       })
 
       return false
@@ -448,7 +536,8 @@ export function OnboardingWizard({
     if (hasErrors) {
       setValidation({
         competitors: competitorErrors,
-        step4: "Fix the competitor rows before continuing.",
+        step3: "Fix the competitor rows before continuing.",
+        topicPromptErrors: {},
       })
 
       return false
@@ -457,6 +546,210 @@ export function OnboardingWizard({
     clearValidation()
 
     return true
+  }
+
+  function validateStepFour() {
+    if (topics.length < 3) {
+      setValidation((current) => ({
+        ...current,
+        step4: "Add at least 3 topics.",
+      }))
+
+      return false
+    }
+
+    const nextTopicPromptErrors: Record<string, string | undefined> = {}
+
+    for (const topic of topics) {
+      const activePrompts = topic.prompts
+        .map((prompt) => ({
+          ...prompt,
+          promptText: prompt.promptText.trim(),
+        }))
+        .filter((prompt) => prompt.promptText.length > 0)
+
+      const uniquePromptCount = new Set(
+        activePrompts.map((prompt) => prompt.promptText.toLowerCase())
+      ).size
+
+      if (activePrompts.length < 2) {
+        nextTopicPromptErrors[topic.id] = "Add at least 2 prompts for this topic."
+        continue
+      }
+
+      if (uniquePromptCount !== activePrompts.length) {
+        nextTopicPromptErrors[topic.id] =
+          "Remove duplicate prompts for this topic."
+      }
+    }
+
+    if (Object.keys(nextTopicPromptErrors).length > 0) {
+      setValidation((current) => ({
+        ...current,
+        step4: "Fix the topic prompts before continuing.",
+        topicPromptErrors: nextTopicPromptErrors,
+      }))
+
+      return false
+    }
+
+    setValidation((current) => ({
+      ...current,
+      step4: undefined,
+      topicPromptErrors: {},
+    }))
+
+    return true
+  }
+
+  const generateTopicPrompts = React.useCallback(
+    async (topicsToGenerate: WizardTopicDraft[]) => {
+      if (topicsToGenerate.length === 0) {
+        return
+      }
+
+      setIsGeneratingTopicPrompts(true)
+      setSubmitError(null)
+      setSaveMessage("Generating topic prompts...")
+
+      try {
+        const populatedCompetitors = competitors
+          .filter(
+            (competitor) => competitor.name.trim() || competitor.website.trim()
+          )
+          .map((competitor) => ({
+            name: competitor.name.trim(),
+            website: competitor.website.trim(),
+          }))
+
+        const result = await fetchOnboardingTopicPrompts({
+          companyName,
+          competitors: populatedCompetitors,
+          description,
+          topics: topicsToGenerate.map((topic) => ({
+            source: topic.source,
+            topicName: topic.topicName,
+          })),
+          website,
+        })
+
+        setTopics((current) =>
+          current.map((topic) => {
+            const generatedTopic = result.topics.find(
+              (candidate) => candidate.topicName === topic.topicName
+            )
+
+            if (!generatedTopic) {
+              return topic
+            }
+
+            return {
+              ...topic,
+              prompts: generatedTopic.prompts.map((prompt) =>
+                createPromptDraft({
+                  addedVia: prompt.addedVia,
+                  promptText: prompt.promptText,
+                })
+              ),
+            }
+          })
+        )
+      } catch (error) {
+        setSubmitError(
+          error instanceof Error
+            ? error.message
+            : "Unable to generate topic prompts."
+        )
+      } finally {
+        setIsGeneratingTopicPrompts(false)
+        setSaveMessage(null)
+      }
+    },
+    [companyName, competitors, description, website]
+  )
+
+  React.useEffect(() => {
+    if (currentStep !== 4 || isGeneratingTopicPrompts || isSaving) {
+      return
+    }
+
+    const missingPrompts = topics.filter((topic) => topic.prompts.length === 0)
+    const hasEnoughCompetitors =
+      competitors.filter(
+        (competitor) => competitor.name.trim() || competitor.website.trim()
+      ).length >= 3
+
+    if (missingPrompts.length === 0 || !hasEnoughCompetitors) {
+      return
+    }
+
+    void generateTopicPrompts(missingPrompts)
+  }, [
+    competitors,
+    currentStep,
+    generateTopicPrompts,
+    isGeneratingTopicPrompts,
+    isSaving,
+    topics,
+  ])
+
+  function updateTopicPrompt(topicId: string, promptId: string, value: string) {
+    setTopics((current) =>
+      current.map((topic) =>
+        topic.id === topicId
+          ? {
+              ...topic,
+              prompts: topic.prompts.map((prompt) =>
+                prompt.id === promptId
+                  ? {
+                      ...prompt,
+                      promptText: value,
+                    }
+                  : prompt
+              ),
+            }
+          : topic
+      )
+    )
+    setValidation((current) => ({
+      ...current,
+      step4: undefined,
+      topicPromptErrors: {
+        ...current.topicPromptErrors,
+        [topicId]: undefined,
+      },
+    }))
+  }
+
+  function addPromptToTopic(topicId: string) {
+    setTopics((current) =>
+      current.map((topic) =>
+        topic.id === topicId
+          ? {
+              ...topic,
+              prompts: [
+                ...topic.prompts,
+                createPromptDraft({
+                  addedVia: "user_created",
+                }),
+              ],
+            }
+          : topic
+      )
+    )
+  }
+
+  function removePromptFromTopic(topicId: string, promptId: string) {
+    setTopics((current) =>
+      current.map((topic) =>
+        topic.id === topicId
+          ? {
+              ...topic,
+              prompts: topic.prompts.filter((prompt) => prompt.id !== promptId),
+            }
+          : topic
+      )
+    )
   }
 
   async function handleNext() {
@@ -524,7 +817,7 @@ export function OnboardingWizard({
           })
 
           setDescription(suggestion.description)
-          setTopics(suggestion.topics)
+          setTopics(buildTopicDrafts(suggestion.topics, "ai_suggested"))
           setCompetitors(buildCompetitorRows(suggestion.competitors))
 
           if (nextWarnings.length) {
@@ -552,10 +845,9 @@ export function OnboardingWizard({
       }
 
       if (currentStep === 3) {
-        await saveBrandDraftStep(client, {
-          topics,
-        })
-
+        await generateTopicPrompts(
+          topics.filter((topic) => topic.prompts.length === 0)
+        )
         setCurrentStep(4)
       }
     } catch (error) {
@@ -607,8 +899,21 @@ export function OnboardingWizard({
           website: competitor.website.trim(),
         }))
 
-      await replaceBrandCompetitors(client, projectId, populatedCompetitors)
-      await markOnboardingComplete(client, projectId)
+      await completeOnboarding({
+        companyName,
+        competitors: populatedCompetitors,
+        description,
+        projectId,
+        topics: topics.map((topic) => ({
+          prompts: topic.prompts.map((prompt) => ({
+            addedVia: prompt.addedVia,
+            promptText: prompt.promptText,
+          })),
+          source: topic.source,
+          topicName: topic.topicName,
+        })),
+        website,
+      })
       await refreshAuthState()
       router.replace("/dashboard")
     } catch (error) {
@@ -753,8 +1058,8 @@ export function OnboardingWizard({
                   : currentStep === 2
                     ? "Review the suggested description or write your own concise version."
                     : currentStep === 3
-                      ? "Review the suggested topics or add the categories where you want the brand to appear."
-                      : "List the companies you want to benchmark against."}
+                      ? "List the companies you want to benchmark against."
+                      : "Review the suggested topics and prompts or add the ones you want to track."}
               </CardDescription>
             </CardHeader>
             <CardContent className="px-4 py-4">
@@ -886,81 +1191,6 @@ export function OnboardingWizard({
 
                 {currentStep === 3 ? (
                   <div className="flex flex-col gap-5">
-                    <FieldGroup>
-                      <Field data-invalid={Boolean(validation.topicInput)}>
-                        <FieldLabel htmlFor="topic-input">
-                          Add a topic
-                        </FieldLabel>
-                        <div className="flex flex-col gap-3 sm:flex-row">
-                          <Input
-                            id="topic-input"
-                            value={topicInput}
-                            placeholder="AI search"
-                            onChange={(event) => {
-                              setTopicInput(event.target.value)
-                              setTopicMessage(undefined)
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault()
-                                addTopicFromInput()
-                              }
-                            }}
-                            aria-invalid={Boolean(validation.topicInput)}
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={addTopicFromInput}
-                            disabled={isSaving}
-                          >
-                            Add topic
-                          </Button>
-                        </div>
-                        {validation.topicInput ? (
-                          <FieldDescription className="text-destructive">
-                            {validation.topicInput}
-                          </FieldDescription>
-                        ) : (
-                          <FieldDescription>
-                            Press Enter to add each topic. Minimum 3, maximum
-                            10.
-                          </FieldDescription>
-                        )}
-                      </Field>
-                    </FieldGroup>
-
-                    <div className="flex min-h-16 flex-wrap gap-2 border border-dashed border-border bg-muted/30 p-3">
-                      {topics.length ? (
-                        topics.map((topic) => (
-                          <Badge key={topic} asChild variant="secondary">
-                            <button
-                              type="button"
-                              onClick={() => removeTopic(topic)}
-                              aria-label={`Remove topic ${topic}`}
-                            >
-                              <span>{topic}</span>
-                              <span className="text-muted-foreground">x</span>
-                            </button>
-                          </Badge>
-                        ))
-                      ) : (
-                        <span className="text-sm text-muted-foreground">
-                          No topics added yet.
-                        </span>
-                      )}
-                    </div>
-
-                    {validation.step3 ? (
-                      <FieldDescription className="text-destructive">
-                        {validation.step3}
-                      </FieldDescription>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {currentStep === 4 ? (
-                  <div className="flex flex-col gap-5">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="text-sm text-muted-foreground">
                         Add at least 3 competitors. You can track up to 20.
@@ -1067,6 +1297,159 @@ export function OnboardingWizard({
                       })}
                     </div>
 
+                    {validation.step3 ? (
+                      <FieldDescription className="text-destructive">
+                        {validation.step3}
+                      </FieldDescription>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {currentStep === 4 ? (
+                  <div className="flex flex-col gap-5">
+                    <FieldGroup>
+                      <Field data-invalid={Boolean(validation.topicInput)}>
+                        <FieldLabel htmlFor="topic-input">
+                          Add a topic
+                        </FieldLabel>
+                        <div className="flex flex-col gap-3 sm:flex-row">
+                          <Input
+                            id="topic-input"
+                            value={topicInput}
+                            placeholder="AI search"
+                            onChange={(event) => {
+                              setTopicInput(event.target.value)
+                              setTopicMessage(undefined)
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault()
+                                addTopicFromInput()
+                              }
+                            }}
+                            aria-invalid={Boolean(validation.topicInput)}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={addTopicFromInput}
+                            disabled={isSaving || isGeneratingTopicPrompts}
+                          >
+                            Add topic
+                          </Button>
+                        </div>
+                        {validation.topicInput ? (
+                          <FieldDescription className="text-destructive">
+                            {validation.topicInput}
+                          </FieldDescription>
+                        ) : (
+                          <FieldDescription>
+                            Press Enter to add each topic. Minimum 3, maximum
+                            10. Each topic needs at least 2 prompts.
+                          </FieldDescription>
+                        )}
+                      </Field>
+                    </FieldGroup>
+
+                    <div className="flex min-h-16 flex-wrap gap-2 border border-dashed border-border bg-muted/30 p-3">
+                      {topics.length ? (
+                        topics.map((topic) => (
+                          <Badge key={topic.id} asChild variant="secondary">
+                            <button
+                              type="button"
+                              onClick={() => removeTopic(topic.topicName)}
+                              aria-label={`Remove topic ${topic.topicName}`}
+                            >
+                              <span>{topic.topicName}</span>
+                              <span className="text-muted-foreground">x</span>
+                            </button>
+                          </Badge>
+                        ))
+                      ) : (
+                        <span className="text-sm text-muted-foreground">
+                          No topics added yet.
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="space-y-4">
+                      {topics.map((topic, topicIndex) => (
+                        <Card key={topic.id} size="sm" className="gap-0 py-0">
+                          <CardHeader className="border-b bg-muted/20">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2">
+                                <CardTitle className="text-sm">
+                                  Topic {topicIndex + 1}: {topic.topicName}
+                                </CardTitle>
+                                <Badge variant="outline">
+                                  {topic.source === "ai_suggested"
+                                    ? "AI suggested"
+                                    : "User added"}
+                                </Badge>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => addPromptToTopic(topic.id)}
+                              >
+                                Add prompt
+                              </Button>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-4 py-3">
+                            {topic.prompts.map((prompt, promptIndex) => (
+                              <Field
+                                key={prompt.id}
+                                data-invalid={Boolean(
+                                  validation.topicPromptErrors[topic.id]
+                                )}
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <FieldLabel
+                                    htmlFor={`topic-prompt-${topic.id}-${prompt.id}`}
+                                  >
+                                    Prompt {promptIndex + 1}
+                                  </FieldLabel>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() =>
+                                      removePromptFromTopic(topic.id, prompt.id)
+                                    }
+                                  >
+                                    Remove prompt
+                                  </Button>
+                                </div>
+                                <Textarea
+                                  id={`topic-prompt-${topic.id}-${prompt.id}`}
+                                  value={prompt.promptText}
+                                  onChange={(event) =>
+                                    updateTopicPrompt(
+                                      topic.id,
+                                      prompt.id,
+                                      event.target.value
+                                    )
+                                  }
+                                  aria-invalid={Boolean(
+                                    validation.topicPromptErrors[topic.id]
+                                  )}
+                                  rows={3}
+                                />
+                              </Field>
+                            ))}
+
+                            {validation.topicPromptErrors[topic.id] ? (
+                              <FieldDescription className="text-destructive">
+                                {validation.topicPromptErrors[topic.id]}
+                              </FieldDescription>
+                            ) : null}
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+
                     {validation.step4 ? (
                       <FieldDescription className="text-destructive">
                         {validation.step4}
@@ -1097,12 +1480,14 @@ export function OnboardingWizard({
                   onClick={() => {
                     void (currentStep === 4 ? handleComplete() : handleNext())
                   }}
-                  disabled={isSaving}
+                  disabled={isSaving || isGeneratingTopicPrompts}
                   className="sm:min-w-40"
                 >
-                  {isSaving
+                  {isSaving || isGeneratingTopicPrompts
                     ? currentStep === 4
-                      ? "Completing setup..."
+                      ? isGeneratingTopicPrompts
+                        ? "Generating prompts..."
+                        : "Completing setup..."
                       : "Saving and continuing..."
                     : currentStep === 4
                       ? "Complete setup"
