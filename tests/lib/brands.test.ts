@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
 import { describe, expect, it, vi } from "vitest"
@@ -6,58 +6,123 @@ import { describe, expect, it, vi } from "vitest"
 import {
   buildBrandLogoUrl,
   isOnboardingComplete,
+  isProjectOnboardingComplete,
   loadCurrentUserBrand,
+  loadCurrentUserProjectProfile,
   markOnboardingComplete,
   normalizeBrandDraftStep,
-  normalizeWebsite,
   normalizeBrandTopics,
   normalizeCompetitors,
+  normalizeWebsite,
   replaceBrandCompetitors,
   resolveBrandWebsitePreview,
   saveBrandDraftStep,
   type Brand,
-  type BrandCompetitor,
-  type BrandWithCompetitors,
+  type BrandEntity,
+  type ProjectProfile,
+  type ProjectTopic,
+  type TrackingProject,
 } from "@/lib/brands"
 
 function makeQueryBuilder<TResult>(result?: TResult) {
   const builder: Record<string, unknown> = {}
 
-  builder.select = vi.fn(() => builder)
-  builder.maybeSingle = vi.fn(() => builder)
-  builder.insert = vi.fn(() => builder)
-  builder.update = vi.fn(() => builder)
   builder.delete = vi.fn(() => builder)
   builder.eq = vi.fn(() => builder)
+  builder.in = vi.fn(() => builder)
+  builder.insert = vi.fn(() => builder)
+  builder.is = vi.fn(() => builder)
+  builder.maybeSingle = vi.fn(() => builder)
+  builder.not = vi.fn(() => builder)
   builder.order = vi.fn(() => builder)
+  builder.select = vi.fn(() => builder)
   builder.then = vi.fn((resolve) => Promise.resolve(resolve(result)))
+  builder.update = vi.fn(() => builder)
 
   return builder as {
-    select: ReturnType<typeof vi.fn>
-    maybeSingle: ReturnType<typeof vi.fn>
-    insert: ReturnType<typeof vi.fn>
-    update: ReturnType<typeof vi.fn>
     delete: ReturnType<typeof vi.fn>
     eq: ReturnType<typeof vi.fn>
+    in: ReturnType<typeof vi.fn>
+    insert: ReturnType<typeof vi.fn>
+    is: ReturnType<typeof vi.fn>
+    maybeSingle: ReturnType<typeof vi.fn>
+    not: ReturnType<typeof vi.fn>
     order: ReturnType<typeof vi.fn>
+    select: ReturnType<typeof vi.fn>
     then: ReturnType<typeof vi.fn>
+    update: ReturnType<typeof vi.fn>
+  }
+}
+
+function makeProject(overrides: Partial<TrackingProject> = {}): TrackingProject {
+  return {
+    created_at: "2026-01-01T00:00:00.000Z",
+    id: "project-1",
+    market_category: null,
+    onboarding_completed_at: null,
+    onboarding_status: "draft",
+    reporting_timezone: "UTC",
+    updated_at: "2026-01-01T00:00:00.000Z",
+    user_id: "user-1",
+    ...overrides,
+  }
+}
+
+function makeBrandEntity(overrides: Partial<BrandEntity> = {}): BrandEntity {
+  return {
+    created_at: "2026-01-01T00:00:00.000Z",
+    description: "",
+    id: "entity-1",
+    is_active: true,
+    name: "Acme",
+    normalized_name: "acme",
+    project_id: "project-1",
+    role: "primary",
+    sort_order: 0,
+    updated_at: "2026-01-01T00:00:00.000Z",
+    website_host: "acme.com",
+    website_url: "https://acme.com",
+    ...overrides,
+  }
+}
+
+function makeTopic(overrides: Partial<ProjectTopic> = {}): ProjectTopic {
+  return {
+    created_at: "2026-01-01T00:00:00.000Z",
+    default_cadence: "weekly",
+    id: "topic-1",
+    is_active: true,
+    name: "ai search",
+    normalized_name: "ai search",
+    project_id: "project-1",
+    sort_order: 0,
+    source: "user_added",
+    topic_catalog_id: null,
+    updated_at: "2026-01-01T00:00:00.000Z",
+    ...overrides,
   }
 }
 
 function makeClient(options: {
-  brandResult?: { data: Brand | Brand[] | null; error: null }
-  competitorResult?: { data: BrandCompetitor[] | null; error: null }
+  brandEntityResult?: { data: BrandEntity[] | BrandEntity | null; error: null }
   currentUserId?: string | null
+  projectResult?: { data: TrackingProject[] | TrackingProject | null; error: null }
+  topicResult?: { data: ProjectTopic[] | ProjectTopic | null; error: null }
 }) {
-  const brandBuilder = makeQueryBuilder(options.brandResult)
-  const competitorBuilder = makeQueryBuilder(options.competitorResult)
+  const projectBuilder = makeQueryBuilder(options.projectResult)
+  const brandEntityBuilder = makeQueryBuilder(options.brandEntityResult)
+  const topicBuilder = makeQueryBuilder(options.topicResult)
   const from = vi.fn((table: string) => {
-    if (table === "brands") {
-      return brandBuilder
+    if (table === "tracking_projects") {
+      return projectBuilder
     }
 
-    if (table === "brand_competitors") {
-      return competitorBuilder
+    if (table === "brand_entities") {
+      return brandEntityBuilder
+    }
+
+    if (table === "project_topics") {
+      return topicBuilder
     }
 
     throw new Error(`Unexpected table: ${table}`)
@@ -69,13 +134,13 @@ function makeClient(options: {
         data: options.currentUserId
           ? {
               user: {
-                id: options.currentUserId,
+                createdAt: "2026-01-01T00:00:00.000Z",
                 email: "jane@example.com",
                 emailVerified: true,
-                createdAt: "2026-01-01T00:00:00.000Z",
-                updatedAt: "2026-01-01T00:00:00.000Z",
+                id: options.currentUserId,
                 metadata: null,
                 profile: null,
+                updatedAt: "2026-01-01T00:00:00.000Z",
               },
             }
           : {
@@ -84,11 +149,12 @@ function makeClient(options: {
         error: null,
       })),
     },
+    brandEntityBuilder,
     database: {
       from,
     },
-    brandBuilder,
-    competitorBuilder,
+    projectBuilder,
+    topicBuilder,
   }
 }
 
@@ -168,99 +234,222 @@ describe("brand helpers", () => {
     expect(resolveBrandWebsitePreview("foo", "pk_test_123")).toBeNull()
   })
 
-  it("derives onboarding completion from the brand and competitors", () => {
-    const brand: BrandWithCompetitors = {
-      company_name: "Acme",
+  it("derives onboarding completion from a project profile", () => {
+    const profile: ProjectProfile = {
       competitors: [
-        {
-          brand_id: "brand-1",
-          created_at: "2026-01-01T00:00:00.000Z",
-          id: "competitor-1",
+        makeBrandEntity({
+          id: "entity-2",
           name: "Competitor 1",
-          updated_at: "2026-01-01T00:00:00.000Z",
-          user_id: "user-1",
-          website: "https://c1.com",
-        },
-        {
-          brand_id: "brand-1",
-          created_at: "2026-01-01T00:00:00.000Z",
-          id: "competitor-2",
+          normalized_name: "competitor 1",
+          role: "competitor",
+          sort_order: 1,
+          website_host: "c1.com",
+          website_url: "https://c1.com",
+        }),
+        makeBrandEntity({
+          id: "entity-3",
           name: "Competitor 2",
-          updated_at: "2026-01-01T00:00:00.000Z",
-          user_id: "user-1",
-          website: "https://c2.com",
-        },
-        {
-          brand_id: "brand-1",
-          created_at: "2026-01-01T00:00:00.000Z",
-          id: "competitor-3",
+          normalized_name: "competitor 2",
+          role: "competitor",
+          sort_order: 2,
+          website_host: "c2.com",
+          website_url: "https://c2.com",
+        }),
+        makeBrandEntity({
+          id: "entity-4",
           name: "Competitor 3",
-          updated_at: "2026-01-01T00:00:00.000Z",
-          user_id: "user-1",
-          website: "https://c3.com",
-        },
+          normalized_name: "competitor 3",
+          role: "competitor",
+          sort_order: 3,
+          website_host: "c3.com",
+          website_url: "https://c3.com",
+        }),
       ],
+      primaryBrand: makeBrandEntity({
+        description: "Useful description",
+      }),
+      project: makeProject({
+        onboarding_completed_at: "2026-01-02T00:00:00.000Z",
+        onboarding_status: "complete",
+      }),
+      topics: [
+        makeTopic({
+          id: "topic-1",
+          name: "ai search",
+          normalized_name: "ai search",
+        }),
+        makeTopic({
+          id: "topic-2",
+          name: "google ai mode",
+          normalized_name: "google ai mode",
+          sort_order: 1,
+        }),
+        makeTopic({
+          id: "topic-3",
+          name: "perplexity",
+          normalized_name: "perplexity",
+          sort_order: 2,
+        }),
+      ],
+    }
+
+    expect(isProjectOnboardingComplete(profile)).toBe(true)
+
+    const onboardingBrand: Brand = {
+      company_name: "Acme",
       created_at: "2026-01-01T00:00:00.000Z",
       description: "Useful description",
-      id: "brand-1",
-      onboarding_completed_at: "2026-01-01T00:00:00.000Z",
+      id: "project-1",
+      onboarding_completed_at: "2026-01-02T00:00:00.000Z",
       topics: ["ai search", "google ai mode", "perplexity"],
       updated_at: "2026-01-01T00:00:00.000Z",
       user_id: "user-1",
       website: "https://acme.com",
     }
 
-    expect(isOnboardingComplete(brand)).toBe(true)
     expect(
       isOnboardingComplete({
-        ...brand,
-        onboarding_completed_at: null,
-      })
-    ).toBe(false)
-  })
-
-  it("loads the current user's brand and competitors", async () => {
-    const client = makeClient({
-      brandResult: {
-        data: [
+        ...onboardingBrand,
+        competitors: [
           {
-            company_name: "Acme",
+            brand_id: "project-1",
             created_at: "2026-01-01T00:00:00.000Z",
-            description: "Description",
-            id: "brand-1",
-            onboarding_completed_at: null,
-            topics: ["ai search", "perplexity"],
-            updated_at: "2026-01-01T00:00:00.000Z",
-            user_id: "user-1",
-            website: "https://acme.com",
-          },
-        ],
-        error: null,
-      },
-      competitorResult: {
-        data: [
-          {
-            brand_id: "brand-1",
-            created_at: "2026-01-01T00:00:00.000Z",
-            id: "competitor-1",
+            id: "entity-2",
             name: "Competitor 1",
             updated_at: "2026-01-01T00:00:00.000Z",
             user_id: "user-1",
             website: "https://c1.com",
           },
+          {
+            brand_id: "project-1",
+            created_at: "2026-01-01T00:00:00.000Z",
+            id: "entity-3",
+            name: "Competitor 2",
+            updated_at: "2026-01-01T00:00:00.000Z",
+            user_id: "user-1",
+            website: "https://c2.com",
+          },
+          {
+            brand_id: "project-1",
+            created_at: "2026-01-01T00:00:00.000Z",
+            id: "entity-4",
+            name: "Competitor 3",
+            updated_at: "2026-01-01T00:00:00.000Z",
+            user_id: "user-1",
+            website: "https://c3.com",
+          },
+        ],
+      })
+    ).toBe(true)
+  })
+
+  it("loads the current user's project profile from the normalized tables", async () => {
+    const client = makeClient({
+      brandEntityResult: {
+        data: [
+          makeBrandEntity(),
+          makeBrandEntity({
+            id: "entity-2",
+            name: "Competitor 1",
+            normalized_name: "competitor 1",
+            role: "competitor",
+            sort_order: 1,
+            website_host: "c1.com",
+            website_url: "https://c1.com",
+          }),
         ],
         error: null,
       },
       currentUserId: "user-1",
+      projectResult: {
+        data: [makeProject()],
+        error: null,
+      },
+      topicResult: {
+        data: [
+          makeTopic({
+            id: "topic-1",
+            name: "ai search",
+            normalized_name: "ai search",
+          }),
+        ],
+        error: null,
+      },
+    })
+
+    await expect(loadCurrentUserProjectProfile(client as never)).resolves.toEqual({
+      competitors: [
+        makeBrandEntity({
+          id: "entity-2",
+          name: "Competitor 1",
+          normalized_name: "competitor 1",
+          role: "competitor",
+          sort_order: 1,
+          website_host: "c1.com",
+          website_url: "https://c1.com",
+        }),
+      ],
+      primaryBrand: makeBrandEntity(),
+      project: makeProject(),
+      topics: [
+        makeTopic({
+          id: "topic-1",
+          name: "ai search",
+          normalized_name: "ai search",
+        }),
+      ],
+    })
+  })
+
+  it("adapts the current user's project profile for the onboarding UI", async () => {
+    const client = makeClient({
+      brandEntityResult: {
+        data: [
+          makeBrandEntity({
+            description: "Description",
+          }),
+          makeBrandEntity({
+            id: "entity-2",
+            name: "Competitor 1",
+            normalized_name: "competitor 1",
+            role: "competitor",
+            sort_order: 1,
+            website_host: "c1.com",
+            website_url: "https://c1.com",
+          }),
+        ],
+        error: null,
+      },
+      currentUserId: "user-1",
+      projectResult: {
+        data: [makeProject()],
+        error: null,
+      },
+      topicResult: {
+        data: [
+          makeTopic({
+            id: "topic-1",
+            name: "ai search",
+            normalized_name: "ai search",
+          }),
+          makeTopic({
+            id: "topic-2",
+            name: "perplexity",
+            normalized_name: "perplexity",
+            sort_order: 1,
+          }),
+        ],
+        error: null,
+      },
     })
 
     await expect(loadCurrentUserBrand(client as never)).resolves.toEqual({
       company_name: "Acme",
       competitors: [
         {
-          brand_id: "brand-1",
+          brand_id: "project-1",
           created_at: "2026-01-01T00:00:00.000Z",
-          id: "competitor-1",
+          id: "entity-2",
           name: "Competitor 1",
           updated_at: "2026-01-01T00:00:00.000Z",
           user_id: "user-1",
@@ -269,225 +458,310 @@ describe("brand helpers", () => {
       ],
       created_at: "2026-01-01T00:00:00.000Z",
       description: "Description",
-      id: "brand-1",
+      id: "project-1",
       onboarding_completed_at: null,
       topics: ["ai search", "perplexity"],
       updated_at: "2026-01-01T00:00:00.000Z",
       user_id: "user-1",
       website: "https://acme.com",
     })
-    expect(client.brandBuilder.maybeSingle).toHaveBeenCalledTimes(1)
   })
 
-  it("creates a brand draft with array insert format", async () => {
+  it("creates a tracking project and primary brand on step 1", async () => {
     const client = makeClient({
       currentUserId: "user-1",
     })
 
-    client.brandBuilder.then = vi
+    client.projectBuilder.then = vi
       .fn()
-      .mockImplementationOnce((resolve) => Promise.resolve(resolve({ data: [], error: null })))
       .mockImplementationOnce((resolve) =>
-        Promise.resolve(
-          resolve({
-            data: [
-              {
-                company_name: "Acme",
-                created_at: "2026-01-01T00:00:00.000Z",
-                description: "",
-                id: "brand-1",
-                onboarding_completed_at: null,
-                topics: [],
-                updated_at: "2026-01-01T00:00:00.000Z",
-                user_id: "user-1",
-                website: "https://acme.com",
-              },
-            ],
-            error: null,
-          })
-        )
+        Promise.resolve(resolve({ data: null, error: null }))
       )
+      .mockImplementationOnce((resolve) =>
+        Promise.resolve(resolve({ data: [makeProject()], error: null }))
+      )
+    client.brandEntityBuilder.then = vi.fn((resolve) =>
+      Promise.resolve(
+        resolve({
+          data: [
+            makeBrandEntity({
+              name: "Acme",
+              normalized_name: "acme",
+              website_host: "acme.com",
+              website_url: "https://acme.com",
+            }),
+          ],
+          error: null,
+        })
+      )
+    )
 
-    await saveBrandDraftStep(client as never, {
+    const result = await saveBrandDraftStep(client as never, {
       company_name: "Acme",
       website: "acme.com",
     })
 
-    expect(client.brandBuilder.insert).toHaveBeenCalledWith([
+    expect(client.projectBuilder.insert).toHaveBeenCalledWith([
       {
-        company_name: "Acme",
-        description: "",
         onboarding_completed_at: null,
-        topics: [],
+        onboarding_status: "draft",
+        reporting_timezone: "UTC",
         user_id: "user-1",
-        website: "https://acme.com",
       },
     ])
-    expect(client.brandBuilder.maybeSingle).toHaveBeenCalledTimes(2)
+    expect(client.brandEntityBuilder.insert).toHaveBeenCalledWith([
+      expect.objectContaining({
+        name: "Acme",
+        normalized_name: "acme",
+        project_id: "project-1",
+        role: "primary",
+        website_host: "acme.com",
+        website_url: "https://acme.com",
+      }),
+    ])
+    expect(result.company_name).toBe("Acme")
+    expect(result.id).toBe("project-1")
   })
 
-  it("updates an existing brand draft", async () => {
+  it("updates an existing primary brand description on step 2", async () => {
     const client = makeClient({
-      brandResult: {
-        data: {
-          company_name: "Acme",
-          created_at: "2026-01-01T00:00:00.000Z",
-          description: "",
-          id: "brand-1",
-          onboarding_completed_at: null,
-          topics: [],
-          updated_at: "2026-01-01T00:00:00.000Z",
-          user_id: "user-1",
-          website: "https://acme.com",
-        },
+      brandEntityResult: {
+        data: [makeBrandEntity()],
         error: null,
       },
       currentUserId: "user-1",
+      projectResult: {
+        data: makeProject(),
+        error: null,
+      },
+      topicResult: {
+        data: [],
+        error: null,
+      },
     })
 
-    client.brandBuilder.then = vi
+    client.brandEntityBuilder.then = vi
       .fn()
       .mockImplementationOnce((resolve) =>
-        Promise.resolve(
-          resolve({
-            data: [
-              {
-                company_name: "Acme",
-                created_at: "2026-01-01T00:00:00.000Z",
-                description: "",
-                id: "brand-1",
-                onboarding_completed_at: null,
-                topics: [],
-                updated_at: "2026-01-01T00:00:00.000Z",
-                user_id: "user-1",
-                website: "https://acme.com",
-              },
-            ],
-            error: null,
-          })
-        )
+        Promise.resolve(resolve({ data: [makeBrandEntity()], error: null }))
       )
       .mockImplementationOnce((resolve) =>
         Promise.resolve(
           resolve({
             data: [
-              {
-                company_name: "Acme",
-                created_at: "2026-01-01T00:00:00.000Z",
+              makeBrandEntity({
                 description: "Updated description",
-                id: "brand-1",
-                onboarding_completed_at: null,
-                topics: [],
-                updated_at: "2026-01-01T00:00:00.000Z",
-                user_id: "user-1",
-                website: "https://acme.com",
-              },
+              }),
             ],
             error: null,
           })
         )
       )
-    client.brandBuilder.update = vi.fn(() => client.brandBuilder)
 
     await saveBrandDraftStep(client as never, {
       description: "Updated description",
     })
 
-    expect(client.brandBuilder.update).toHaveBeenCalledWith({
+    expect(client.brandEntityBuilder.update).toHaveBeenCalledWith({
       description: "Updated description",
     })
-    expect(client.brandBuilder.maybeSingle).toHaveBeenCalledTimes(2)
   })
 
-  it("replaces competitors for a brand using delete then insert", async () => {
+  it("replaces project topics on step 3", async () => {
+    const client = makeClient({
+      brandEntityResult: {
+        data: [makeBrandEntity()],
+        error: null,
+      },
+      currentUserId: "user-1",
+      projectResult: {
+        data: makeProject(),
+        error: null,
+      },
+      topicResult: {
+        data: [],
+        error: null,
+      },
+    })
+
+    client.topicBuilder.then = vi
+      .fn()
+      .mockImplementationOnce((resolve) =>
+        Promise.resolve(resolve({ data: [], error: null }))
+      )
+      .mockImplementationOnce((resolve) =>
+        Promise.resolve(
+          resolve({
+            data: [
+              makeTopic({
+                id: "topic-1",
+                name: "ai search",
+                normalized_name: "ai search",
+              }),
+              makeTopic({
+                id: "topic-2",
+                name: "perplexity",
+                normalized_name: "perplexity",
+                sort_order: 1,
+              }),
+            ],
+            error: null,
+          })
+        )
+      )
+
+    const result = await saveBrandDraftStep(client as never, {
+      topics: [" AI Search ", "perplexity"],
+    })
+
+    expect(client.topicBuilder.delete).toHaveBeenCalledTimes(1)
+    expect(client.topicBuilder.insert).toHaveBeenCalledWith([
+      expect.objectContaining({
+        default_cadence: "weekly",
+        name: "ai search",
+        normalized_name: "ai search",
+        project_id: "project-1",
+        sort_order: 0,
+      }),
+      expect.objectContaining({
+        default_cadence: "weekly",
+        name: "perplexity",
+        normalized_name: "perplexity",
+        project_id: "project-1",
+        sort_order: 1,
+      }),
+    ])
+    expect(result.topics).toEqual(["ai search", "perplexity"])
+  })
+
+  it("replaces competitors using brand entities scoped to the project", async () => {
     const client = makeClient({
       currentUserId: "user-1",
     })
 
-    client.competitorBuilder.delete = vi.fn(() => client.competitorBuilder)
-    client.competitorBuilder.eq = vi.fn(() => client.competitorBuilder)
-    client.competitorBuilder.insert = vi.fn(() => client.competitorBuilder)
-    client.competitorBuilder.then = vi.fn((resolve) =>
+    client.brandEntityBuilder.then = vi.fn((resolve) =>
       Promise.resolve(
         resolve({
           data: [
-            {
-              brand_id: "brand-1",
-              created_at: "2026-01-01T00:00:00.000Z",
-              id: "competitor-1",
+            makeBrandEntity({
+              id: "entity-2",
               name: "Competitor 1",
-              updated_at: "2026-01-01T00:00:00.000Z",
-              user_id: "user-1",
-              website: "https://c1.com",
-            },
+              normalized_name: "competitor 1",
+              role: "competitor",
+              sort_order: 0,
+              website_host: "c1.com",
+              website_url: "https://c1.com",
+            }),
           ],
           error: null,
         })
       )
     )
 
-    await replaceBrandCompetitors(client as never, "brand-1", [
+    await replaceBrandCompetitors(client as never, "project-1", [
       { name: " Competitor 1 ", website: "c1.com" },
     ])
 
-    expect(client.competitorBuilder.delete).toHaveBeenCalledTimes(1)
-    expect(client.competitorBuilder.insert).toHaveBeenCalledWith([
-      {
-        brand_id: "brand-1",
+    expect(client.brandEntityBuilder.delete).toHaveBeenCalledTimes(1)
+    expect(client.brandEntityBuilder.insert).toHaveBeenCalledWith([
+      expect.objectContaining({
         name: "Competitor 1",
-        user_id: "user-1",
-        website: "https://c1.com",
-      },
+        normalized_name: "competitor 1",
+        project_id: "project-1",
+        role: "competitor",
+        website_host: "c1.com",
+        website_url: "https://c1.com",
+      }),
     ])
   })
 
-  it("marks onboarding complete", async () => {
+  it("marks onboarding complete on the tracking project", async () => {
     const client = makeClient({
       currentUserId: "user-1",
     })
 
-    client.brandBuilder.update = vi.fn(() => client.brandBuilder)
-    client.brandBuilder.eq = vi.fn(() => client.brandBuilder)
-    client.brandBuilder.then = vi.fn((resolve) =>
+    client.projectBuilder.update = vi.fn(() => client.projectBuilder)
+    client.projectBuilder.eq = vi.fn(() => client.projectBuilder)
+    client.projectBuilder.then = vi.fn((resolve) =>
       Promise.resolve(
         resolve({
           data: [
-            {
-              company_name: "Acme",
-              created_at: "2026-01-01T00:00:00.000Z",
-              description: "Description",
-              id: "brand-1",
+            makeProject({
               onboarding_completed_at: "2026-04-01T00:00:00.000Z",
-              topics: ["ai search", "perplexity", "google ai mode"],
-              updated_at: "2026-01-01T00:00:00.000Z",
-              user_id: "user-1",
-              website: "https://acme.com",
-            },
+              onboarding_status: "complete",
+            }),
           ],
           error: null,
         })
       )
     )
 
-    const result = await markOnboardingComplete(client as never, "brand-1")
+    const result = await markOnboardingComplete(client as never, "project-1")
 
-    expect(client.brandBuilder.update).toHaveBeenCalledWith({
+    expect(client.projectBuilder.update).toHaveBeenCalledWith({
       onboarding_completed_at: expect.any(String),
+      onboarding_status: "complete",
     })
     expect(result.onboarding_completed_at).toEqual(expect.any(String))
-    expect(client.brandBuilder.maybeSingle).toHaveBeenCalledTimes(1)
+    expect(result.id).toBe("project-1")
   })
 
-  it("keeps the SQL schema artifact aligned with the brand model", () => {
-    const schemaPath = resolve(process.cwd(), "lib/brands/schema.sql")
-    const schema = readFileSync(schemaPath, "utf8")
+  it("keeps the migration and schema document aligned with the normalized model", () => {
+    const migrationPath = resolve(
+      process.cwd(),
+      "db/migrations/0001_brand_intelligence.sql"
+    )
+    const docsPath = resolve(
+      process.cwd(),
+      "docs/database/brand-intelligence-schema.md"
+    )
+    const migration = readFileSync(migrationPath, "utf8")
+    const docs = readFileSync(docsPath, "utf8")
 
-    expect(schema).toContain("CREATE TABLE brands")
-    expect(schema).toContain("CREATE TABLE brand_competitors")
-    expect(schema).toContain("topics TEXT[] NOT NULL DEFAULT '{}'::text[]")
-    expect(schema).toContain("ALTER TABLE brands ENABLE ROW LEVEL SECURITY")
-    expect(schema).toContain("ALTER TABLE brand_competitors ENABLE ROW LEVEL SECURITY")
-    expect(schema).toContain("system.update_updated_at()")
-    expect(schema).toContain("auth.uid()")
+    expect(migration).toContain("CREATE TABLE tracking_projects")
+    expect(migration).toContain("CREATE TABLE brand_entities")
+    expect(migration).toContain("CREATE TABLE project_topics")
+    expect(migration).toContain("CREATE TABLE prompt_run_responses")
+    expect(migration).toContain("CREATE TABLE response_citations")
+    expect(migration).toContain("CREATE TABLE response_brand_citations")
+    expect(migration).toContain("ALTER TABLE tracking_projects ENABLE ROW LEVEL SECURITY")
+    expect(migration).toContain("auth.uid()")
+
+    expect(docs).toContain("# Brand Intelligence Schema")
+    expect(docs).toContain("tracking_projects")
+    expect(docs).toContain("brand_entities")
+    expect(docs).toContain("prompt_run_responses")
+    expect(docs).toContain("response_citations")
+  })
+
+  it("keeps a legacy-drop migration and per-table type files in place", () => {
+    const dropMigrationPath = resolve(
+      process.cwd(),
+      "db/migrations/0003_drop_legacy_brand_tables.sql"
+    )
+    const dropMigration = readFileSync(dropMigrationPath, "utf8")
+
+    expect(dropMigration).toContain("DROP TABLE IF EXISTS brand_competitors")
+    expect(dropMigration).toContain("DROP TABLE IF EXISTS brands")
+
+    for (const filePath of [
+      "lib/tracking-projects/types.ts",
+      "lib/brand-entities/types.ts",
+      "lib/project-topics/types.ts",
+      "lib/ai-platforms/types.ts",
+      "lib/project-platforms/types.ts",
+      "lib/prompt-catalog/types.ts",
+      "lib/prompt-market-metrics/types.ts",
+      "lib/tracked-prompts/types.ts",
+      "lib/prompt-runs/types.ts",
+      "lib/prompt-run-responses/types.ts",
+      "lib/response-brand-metrics/types.ts",
+      "lib/source-domains/types.ts",
+      "lib/source-pages/types.ts",
+      "lib/response-citations/types.ts",
+      "lib/response-brand-citations/types.ts",
+    ]) {
+      expect(existsSync(resolve(process.cwd(), filePath))).toBe(true)
+    }
   })
 })

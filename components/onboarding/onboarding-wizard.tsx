@@ -156,7 +156,7 @@ function hasPopulatedCompetitorRows(rows: WizardCompetitor[]) {
 
 function getInitialState(brand: BrandWithCompetitors | null) {
   return {
-    brandId: brand?.id ?? null,
+    projectId: brand?.id ?? null,
     companyName: brand?.company_name ?? "",
     competitors: getInitialCompetitors(brand),
     currentStep: getInitialStep(brand),
@@ -177,7 +177,7 @@ export function OnboardingWizard({
 }: OnboardingWizardProps) {
   const router = useRouter()
   const client = React.useMemo(() => getInsforgeBrowserClient(), [])
-  const [brandId, setBrandId] = React.useState<string | null>(
+  const [projectId, setProjectId] = React.useState<string | null>(
     () => brand?.id ?? null
   )
   const [companyName, setCompanyName] = React.useState(
@@ -213,7 +213,7 @@ export function OnboardingWizard({
 
     const initialState = getInitialState(brand)
 
-    setBrandId(initialState.brandId)
+    setProjectId(initialState.projectId)
     setCompanyName((current) => current || initialState.companyName)
     setWebsite((current) => current || initialState.website)
     setDescription((current) =>
@@ -492,7 +492,7 @@ export function OnboardingWizard({
           website,
         })
 
-        setBrandId(nextBrand.id)
+        setProjectId(nextBrand.id)
         setSaveMessage("Analyzing your homepage...")
         setIsPrefillingStepOne(true)
 
@@ -569,7 +569,7 @@ export function OnboardingWizard({
   }
 
   async function handleComplete() {
-    if (isSaving || !brandId) {
+    if (isSaving || !projectId) {
       return
     }
 
@@ -607,8 +607,8 @@ export function OnboardingWizard({
           website: competitor.website.trim(),
         }))
 
-      await replaceBrandCompetitors(client, brandId, populatedCompetitors)
-      await markOnboardingComplete(client, brandId)
+      await replaceBrandCompetitors(client, projectId, populatedCompetitors)
+      await markOnboardingComplete(client, projectId)
       await refreshAuthState()
       router.replace("/dashboard")
     } catch (error) {

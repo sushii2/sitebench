@@ -1,5 +1,20 @@
 export type OnboardingStep = 1 | 2 | 3 | 4
 
+export type { BrandEntity } from "@/lib/brand-entities/types"
+export type { ProjectTopic, TopicCadence, TopicSource } from "@/lib/project-topics/types"
+export type { OnboardingStatus, TrackingProject } from "@/lib/tracking-projects/types"
+
+import type { BrandEntity } from "@/lib/brand-entities/types"
+import type { ProjectTopic } from "@/lib/project-topics/types"
+import type { TrackingProject } from "@/lib/tracking-projects/types"
+
+export interface ProjectProfile {
+  project: TrackingProject
+  primaryBrand: BrandEntity | null
+  competitors: BrandEntity[]
+  topics: ProjectTopic[]
+}
+
 export interface Brand {
   id: string
   user_id: string

@@ -7,6 +7,7 @@ import type {
 } from "@/lib/brands/types"
 import {
   normalizeCompanyName,
+  parsePublicWebsiteUrl,
   normalizeWebsite,
 } from "@/lib/brands/validation"
 
@@ -57,6 +58,21 @@ export function normalizeCompetitors(competitors: BrandCompetitorInput[]) {
     name: normalizeWhitespace(competitor.name),
     website: normalizeWebsite(competitor.website),
   }))
+}
+
+export function normalizeBrandNameKey(value: string) {
+  return normalizeWhitespace(value).toLowerCase()
+}
+
+export function getWebsiteHost(value: string) {
+  const normalizedWebsite = normalizeWebsite(value)
+  const url = parsePublicWebsiteUrl(normalizedWebsite)
+
+  if (!url) {
+    throw new Error("Enter a valid website")
+  }
+
+  return url.hostname.toLowerCase()
 }
 
 export function normalizeBrandDraftStep(
