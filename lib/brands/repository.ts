@@ -1,7 +1,9 @@
 import type { InsForgeClient } from "@insforge/sdk"
 
 import {
+  getWebsiteHost,
   normalizeBrandDraftStep,
+  normalizeBrandNameKey,
   normalizeBrandTopics,
   normalizeCompanyName,
   normalizeCompetitors,
@@ -13,7 +15,12 @@ import type {
   BrandCompetitor,
   BrandCompetitorInput,
   BrandDraftStepInput,
+  BrandEntity,
   BrandWithCompetitors,
+  ProjectProfile,
+  ProjectTopic,
+  TopicCadence,
+  TrackingProject,
 } from "@/lib/brands/types"
 
 type BrandClient = Pick<InsForgeClient, "auth" | "database">
@@ -26,6 +33,14 @@ function takeSingleRow<T>(value: T | T[] | null | undefined) {
   return value ?? null
 }
 
+function takeRows<T>(value: T | T[] | null | undefined) {
+  if (Array.isArray(value)) {
+    return value
+  }
+
+  return value ? [value] : []
+}
+
 async function getCurrentUserId(client: BrandClient) {
   const { data, error } = await client.auth.getCurrentUser()
 
@@ -36,59 +51,267 @@ async function getCurrentUserId(client: BrandClient) {
   return data.user.id
 }
 
-async function loadBrandRecord(client: BrandClient, userId: string) {
+async function loadProjectRecord(client: BrandClient, userId: string) {
   const response = await client.database
-    .from("brands")
+    .from("tracking_projects")
     .select("*")
     .eq("user_id", userId)
     .maybeSingle()
 
   if (!response) {
-    throw new Error("Unable to load brand details.")
+    throw new Error("Unable to load project details.")
   }
 
   if (response.error) {
-    throw new Error(response.error.message ?? "Unable to load brand details.")
+    throw new Error(response.error.message ?? "Unable to load project details.")
   }
 
-  return takeSingleRow(response.data as Brand | Brand[] | null)
+  return takeSingleRow(response.data as TrackingProject | TrackingProject[] | null)
 }
 
-export async function loadCurrentUserBrand(
+async function loadBrandEntities(client: BrandClient, projectId: string) {
+  const response = await client.database
+    .from("brand_entities")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("sort_order", { ascending: true })
+
+  if (!response) {
+    throw new Error("Unable to load project brands.")
+  }
+
+  if (response.error) {
+    throw new Error(response.error.message ?? "Unable to load project brands.")
+  }
+
+  return takeRows(response.data as BrandEntity[] | BrandEntity | null)
+}
+
+async function loadProjectTopics(client: BrandClient, projectId: string) {
+  const response = await client.database
+    .from("project_topics")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("sort_order", { ascending: true })
+
+  if (!response) {
+    throw new Error("Unable to load project topics.")
+  }
+
+  if (response.error) {
+    throw new Error(response.error.message ?? "Unable to load project topics.")
+  }
+
+  return takeRows(response.data as ProjectTopic[] | ProjectTopic | null)
+}
+
+function buildProjectProfile(
+  project: TrackingProject,
+  brandEntities: BrandEntity[],
+  topics: ProjectTopic[]
+): ProjectProfile {
+  const primaryBrand =
+    brandEntities.find((brandEntity) => brandEntity.role === "primary") ?? null
+
+  return {
+    competitors: brandEntities.filter(
+      (brandEntity) => brandEntity.role === "competitor"
+    ),
+    primaryBrand,
+    project,
+    topics,
+  }
+}
+
+function toOnboardingBrand(profile: ProjectProfile): BrandWithCompetitors {
+  const primaryBrand = profile.primaryBrand
+
+  return {
+    company_name: primaryBrand?.name ?? "",
+    competitors: profile.competitors.map((competitor) => ({
+      brand_id: profile.project.id,
+      created_at: competitor.created_at,
+      id: competitor.id,
+      name: competitor.name,
+      updated_at: competitor.updated_at,
+      user_id: profile.project.user_id,
+      website: competitor.website_url,
+    })),
+    created_at: profile.project.created_at,
+    description: primaryBrand?.description ?? "",
+    id: profile.project.id,
+    onboarding_completed_at: profile.project.onboarding_completed_at,
+    topics: profile.topics.map((topic) => topic.name),
+    updated_at: profile.project.updated_at,
+    user_id: profile.project.user_id,
+    website: primaryBrand?.website_url ?? "",
+  }
+}
+
+async function createTrackingProject(
+  client: BrandClient,
+  userId: string
+): Promise<TrackingProject> {
+  const response = await client.database
+    .from("tracking_projects")
+    .insert([
+      {
+        onboarding_completed_at: null,
+        onboarding_status: "draft",
+        reporting_timezone: "UTC",
+        user_id: userId,
+      },
+    ])
+    .select("*")
+    .maybeSingle()
+
+  if (!response || response.error || !response.data) {
+    throw response?.error ?? new Error("Unable to create tracking project.")
+  }
+
+  const project = takeSingleRow(response.data as TrackingProject | TrackingProject[] | null)
+
+  if (!project) {
+    throw new Error("Unable to create tracking project.")
+  }
+
+  return project
+}
+
+async function insertPrimaryBrandEntity(
+  client: BrandClient,
+  projectId: string,
+  input: { company_name: string; website: string }
+) {
+  const companyName = normalizeCompanyName(input.company_name)
+  const website = normalizeWebsite(input.website)
+
+  const response = await client.database
+    .from("brand_entities")
+    .insert([
+      {
+        description: "",
+        is_active: true,
+        name: companyName,
+        normalized_name: normalizeBrandNameKey(companyName),
+        project_id: projectId,
+        role: "primary",
+        sort_order: 0,
+        website_host: getWebsiteHost(website),
+        website_url: website,
+      },
+    ])
+    .select("*")
+    .maybeSingle()
+
+  if (!response || response.error || !response.data) {
+    throw response?.error ?? new Error("Unable to create primary brand.")
+  }
+
+  const brandEntity = takeSingleRow(response.data as BrandEntity | BrandEntity[] | null)
+
+  if (!brandEntity) {
+    throw new Error("Unable to create primary brand.")
+  }
+
+  return brandEntity
+}
+
+async function updateBrandEntity(
+  client: BrandClient,
+  brandEntityId: string,
+  values: Partial<Pick<BrandEntity, "description" | "name" | "normalized_name" | "website_host" | "website_url">>
+) {
+  const response = await client.database
+    .from("brand_entities")
+    .update(values)
+    .eq("id", brandEntityId)
+    .select("*")
+    .maybeSingle()
+
+  if (!response || response.error || !response.data) {
+    throw response?.error ?? new Error("Unable to update brand details.")
+  }
+
+  const brandEntity = takeSingleRow(response.data as BrandEntity | BrandEntity[] | null)
+
+  if (!brandEntity) {
+    throw new Error("Unable to update brand details.")
+  }
+
+  return brandEntity
+}
+
+async function replaceProjectTopics(
+  client: BrandClient,
+  projectId: string,
+  topics: string[],
+  defaultCadence: TopicCadence = "weekly"
+) {
+  await client.database.from("project_topics").delete().eq("project_id", projectId)
+
+  const normalizedTopics = normalizeBrandTopics(topics)
+
+  if (!normalizedTopics.length) {
+    return []
+  }
+
+  const response = await client.database
+    .from("project_topics")
+    .insert(
+      normalizedTopics.map((topic, index) => ({
+        default_cadence: defaultCadence,
+        is_active: true,
+        name: topic,
+        normalized_name: topic,
+        project_id: projectId,
+        sort_order: index,
+        source: "user_added",
+        topic_catalog_id: null,
+      }))
+    )
+    .select("*")
+
+  if (!response || response.error || !response.data) {
+    throw response?.error ?? new Error("Unable to update project topics.")
+  }
+
+  return takeRows(response.data as ProjectTopic[] | ProjectTopic | null)
+}
+
+export async function loadCurrentUserProjectProfile(
   client: BrandClient
-): Promise<BrandWithCompetitors | null> {
+): Promise<ProjectProfile | null> {
   const userId = await getCurrentUserId(client)
 
   if (!userId) {
     return null
   }
 
-  const brand = await loadBrandRecord(client, userId)
+  const project = await loadProjectRecord(client, userId)
 
-  if (!brand) {
+  if (!project) {
     return null
   }
 
-  const competitorResponse = await client.database
-    .from("brand_competitors")
-    .select("*")
-    .eq("brand_id", brand.id)
-    .order("created_at", { ascending: true })
+  const [brandEntities, topics] = await Promise.all([
+    loadBrandEntities(client, project.id),
+    loadProjectTopics(client, project.id),
+  ])
 
-  if (!competitorResponse) {
-    throw new Error("Unable to load brand competitors.")
+  return buildProjectProfile(project, brandEntities, topics)
+}
+
+export async function loadCurrentUserBrand(
+  client: BrandClient
+): Promise<BrandWithCompetitors | null> {
+  const profile = await loadCurrentUserProjectProfile(client)
+
+  if (!profile) {
+    return null
   }
 
-  if (competitorResponse.error) {
-    throw new Error(
-      competitorResponse.error.message ?? "Unable to load brand competitors."
-    )
-  }
-
-  return {
-    ...brand,
-    competitors: (competitorResponse.data ?? []) as unknown as BrandCompetitor[],
-  }
+  return toOnboardingBrand(profile)
 }
 
 export async function saveBrandDraftStep(
@@ -102,9 +325,9 @@ export async function saveBrandDraftStep(
   }
 
   const patch = normalizeBrandDraftStep(input)
-  const existingBrand = await loadBrandRecord(client, userId)
+  let project = await loadProjectRecord(client, userId)
 
-  if (!existingBrand) {
+  if (!project) {
     const companyName = "company_name" in patch ? patch.company_name : undefined
     const website = "website" in patch ? patch.website : undefined
 
@@ -112,76 +335,77 @@ export async function saveBrandDraftStep(
       throw new Error("Company name and website are required before saving.")
     }
 
-    const response = await client.database
-      .from("brands")
-      .insert([
-        {
-          company_name: normalizeCompanyName(companyName),
-          description: "",
-          onboarding_completed_at: null,
-          topics: [],
-          user_id: userId,
-          website: normalizeWebsite(website),
-        },
-      ])
-      .select("*")
-      .maybeSingle()
+    project = await createTrackingProject(client, userId)
+    const primaryBrand = await insertPrimaryBrandEntity(client, project.id, {
+      company_name: companyName,
+      website,
+    })
 
-    if (!response || response.error || !response.data) {
-      throw response?.error ?? new Error("Unable to create brand draft.")
+    return toOnboardingBrand({
+      competitors: [],
+      primaryBrand,
+      project,
+      topics: [],
+    })
+  }
+
+  const brandEntities = await loadBrandEntities(client, project.id)
+  const primaryBrand =
+    brandEntities.find((brandEntity) => brandEntity.role === "primary") ?? null
+
+  let nextPrimaryBrand = primaryBrand
+  let nextTopics: ProjectTopic[] | null = null
+
+  if (
+    typeof patch.company_name === "string" &&
+    typeof patch.website === "string"
+  ) {
+    if (!nextPrimaryBrand) {
+      nextPrimaryBrand = await insertPrimaryBrandEntity(client, project.id, {
+        company_name: patch.company_name,
+        website: patch.website,
+      })
+    } else {
+      nextPrimaryBrand = await updateBrandEntity(client, nextPrimaryBrand.id, {
+        name: normalizeCompanyName(patch.company_name),
+        normalized_name: normalizeBrandNameKey(patch.company_name),
+        website_host: getWebsiteHost(patch.website),
+        website_url: normalizeWebsite(patch.website),
+      })
+    }
+  }
+
+  if (typeof patch.description === "string") {
+    if (!nextPrimaryBrand) {
+      throw new Error("Brand basics are required before saving.")
     }
 
-    const createdBrand = takeSingleRow(response.data as Brand | Brand[] | null)
-
-    if (!createdBrand) {
-      throw new Error("Unable to create brand draft.")
-    }
-
-    return createdBrand
+    nextPrimaryBrand = await updateBrandEntity(client, nextPrimaryBrand.id, {
+      description: normalizeDescription(patch.description),
+    })
   }
 
-  const updatePayload: Record<string, string | string[]> = {}
-
-  if ("company_name" in patch && typeof patch.company_name === "string") {
-    updatePayload.company_name = normalizeCompanyName(patch.company_name)
+  if (Array.isArray(patch.topics)) {
+    nextTopics = await replaceProjectTopics(client, project.id, patch.topics)
   }
 
-  if ("website" in patch && typeof patch.website === "string") {
-    updatePayload.website = normalizeWebsite(patch.website)
+  if (!nextTopics) {
+    nextTopics = await loadProjectTopics(client, project.id)
   }
 
-  if ("description" in patch && typeof patch.description === "string") {
-    updatePayload.description = normalizeDescription(patch.description)
-  }
-
-  if ("topics" in patch && Array.isArray(patch.topics)) {
-    updatePayload.topics = normalizeBrandTopics(patch.topics)
-  }
-
-  const response = await client.database
-    .from("brands")
-    .update(updatePayload)
-    .eq("id", existingBrand.id)
-    .eq("user_id", userId)
-    .select("*")
-    .maybeSingle()
-
-  if (!response || response.error || !response.data) {
-    throw response?.error ?? new Error("Unable to update brand draft.")
-  }
-
-  const updatedBrand = takeSingleRow(response.data as Brand | Brand[] | null)
-
-  if (!updatedBrand) {
-    throw new Error("Unable to update brand draft.")
-  }
-
-  return updatedBrand
+  return toOnboardingBrand({
+    competitors: brandEntities.filter(
+      (brandEntity) => brandEntity.role === "competitor"
+    ),
+    primaryBrand: nextPrimaryBrand,
+    project,
+    topics: nextTopics,
+  })
 }
 
 export async function replaceBrandCompetitors(
   client: BrandClient,
-  brandId: string,
+  projectId: string,
   competitors: BrandCompetitorInput[]
 ): Promise<BrandCompetitor[]> {
   const userId = await getCurrentUserId(client)
@@ -191,10 +415,10 @@ export async function replaceBrandCompetitors(
   }
 
   await client.database
-    .from("brand_competitors")
+    .from("brand_entities")
     .delete()
-    .eq("brand_id", brandId)
-    .eq("user_id", userId)
+    .eq("project_id", projectId)
+    .eq("role", "competitor")
 
   const normalizedCompetitors = normalizeCompetitors(competitors)
 
@@ -203,13 +427,18 @@ export async function replaceBrandCompetitors(
   }
 
   const response = await client.database
-    .from("brand_competitors")
+    .from("brand_entities")
     .insert(
-      normalizedCompetitors.map((competitor) => ({
-        brand_id: brandId,
+      normalizedCompetitors.map((competitor, index) => ({
+        description: "",
+        is_active: true,
         name: competitor.name,
-        user_id: userId,
-        website: competitor.website,
+        normalized_name: normalizeBrandNameKey(competitor.name),
+        project_id: projectId,
+        role: "competitor",
+        sort_order: index,
+        website_host: getWebsiteHost(competitor.website),
+        website_url: competitor.website,
       }))
     )
     .select("*")
@@ -218,12 +447,22 @@ export async function replaceBrandCompetitors(
     throw response?.error ?? new Error("Unable to replace competitors.")
   }
 
-  return response.data as unknown as BrandCompetitor[]
+  return takeRows(response.data as BrandEntity[] | BrandEntity | null).map(
+    (competitor) => ({
+      brand_id: projectId,
+      created_at: competitor.created_at,
+      id: competitor.id,
+      name: competitor.name,
+      updated_at: competitor.updated_at,
+      user_id: userId,
+      website: competitor.website_url,
+    })
+  )
 }
 
 export async function markOnboardingComplete(
   client: BrandClient,
-  brandId: string
+  projectId: string
 ): Promise<Brand> {
   const userId = await getCurrentUserId(client)
 
@@ -234,11 +473,12 @@ export async function markOnboardingComplete(
   const completedAt = new Date().toISOString()
 
   const response = await client.database
-    .from("brands")
+    .from("tracking_projects")
     .update({
       onboarding_completed_at: completedAt,
+      onboarding_status: "complete",
     })
-    .eq("id", brandId)
+    .eq("id", projectId)
     .eq("user_id", userId)
     .select("*")
     .maybeSingle()
@@ -247,13 +487,31 @@ export async function markOnboardingComplete(
     throw response?.error ?? new Error("Unable to mark onboarding as complete.")
   }
 
-  const completedBrand = takeSingleRow(response.data as Brand | Brand[] | null)
+  const project = takeSingleRow(response.data as TrackingProject | TrackingProject[] | null)
 
-  if (!completedBrand) {
+  if (!project) {
     throw new Error("Unable to mark onboarding as complete.")
   }
 
-  return completedBrand
+  const [brandEntities, topics] = await Promise.all([
+    loadBrandEntities(client, project.id).catch(() => []),
+    loadProjectTopics(client, project.id).catch(() => []),
+  ])
+
+  return toOnboardingBrand(
+    buildProjectProfile(project, brandEntities, topics)
+  )
+}
+
+export function isProjectOnboardingComplete(profile: ProjectProfile) {
+  return Boolean(
+    profile.project.onboarding_completed_at &&
+      profile.primaryBrand?.name.trim() &&
+      profile.primaryBrand.website_url.trim() &&
+      profile.primaryBrand.description.trim() &&
+      profile.topics.length >= 3 &&
+      profile.competitors.length >= 3
+  )
 }
 
 export function isOnboardingComplete(brand: BrandWithCompetitors) {
