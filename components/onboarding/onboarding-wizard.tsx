@@ -2,6 +2,16 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { HugeiconsIcon } from "@hugeicons/react"
+import {
+  Add01Icon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  Cancel01Icon,
+  Delete02Icon,
+  Edit02Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons"
 
 import {
   getCompanyNameValidationError,
@@ -22,15 +32,17 @@ import type {
 } from "@/lib/onboarding/types"
 import { cn } from "@/lib/utils"
 import { BrandPreview } from "@/components/brands/brand-preview"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
 import {
   Field,
   FieldDescription,
@@ -38,10 +50,15 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Progress } from "@/components/ui/progress"
-import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  OnboardingSidebar,
+  type SidebarStep,
+} from "@/components/onboarding/onboarding-sidebar"
+import { PromptEditDialog } from "@/components/onboarding/prompt-edit-dialog"
+import { ProviderLogos } from "@/components/onboarding/provider-logos"
 
 type WizardCompetitor = {
   id: string
@@ -78,26 +95,35 @@ type ValidationState = {
 
 const stepMeta = [
   {
-    description: "Company name and website",
     key: 1 as const,
     label: "Brand basics",
+    heading: "Let's set up your brand",
+    subtitle: "Tell us the site we're going to track.",
   },
   {
-    description: "What your business does",
     key: 2 as const,
     label: "Description",
+    heading: "Describe what you do",
+    subtitle: "Help us capture your business in one short paragraph.",
   },
   {
-    description: "Where you want to show up",
     key: 3 as const,
     label: "Competitors",
+    heading: "Add your competitors",
+    subtitle: "List the companies you want to benchmark against.",
   },
   {
-    description: "Topics and prompts to track",
     key: 4 as const,
     label: "Topics & prompts",
+    heading: "Choose topics and prompts",
+    subtitle: "Review the suggestions or add the ones you want to track.",
   },
 ] as const
+
+const sidebarSteps: readonly SidebarStep[] = stepMeta.map((step) => ({
+  key: step.key,
+  label: step.label,
+}))
 
 let competitorSequence = 0
 let topicSequence = 0
@@ -264,8 +290,44 @@ export function OnboardingWizard({
     React.useState(false)
   const [isPrefillingStepOne, setIsPrefillingStepOne] = React.useState(false)
   const [prefillNotice, setPrefillNotice] = React.useState<string | null>(null)
-  const [saveMessage, setSaveMessage] = React.useState<string | null>(null)
   const [submitError, setSubmitError] = React.useState<string | null>(null)
+  const [editingTopicId, setEditingTopicId] = React.useState<string | null>(null)
+  const [topicEditValue, setTopicEditValue] = React.useState("")
+  const [editingCompetitorIds, setEditingCompetitorIds] = React.useState<
+    ReadonlySet<string>
+  >(() => new Set<string>())
+  const didSeedEditingRef = React.useRef(false)
+
+  if (!didSeedEditingRef.current) {
+    didSeedEditingRef.current = true
+    const initial = new Set<string>()
+    for (const row of competitors) {
+      if (!row.name.trim() && !row.website.trim()) {
+        initial.add(row.id)
+      }
+    }
+    if (initial.size > 0) {
+      setEditingCompetitorIds(initial)
+    }
+  }
+  const [promptDialog, setPromptDialog] = React.useState<
+    | {
+        topicId: string
+        topicName: string
+        mode: "add" | "edit"
+        promptId?: string
+        initialValue?: string
+      }
+    | null
+  >(null)
+  const [confirmRemove, setConfirmRemove] = React.useState<
+    | {
+        kind: "topic" | "competitor" | "prompt"
+        label: string
+        onConfirm: () => void
+      }
+    | null
+  >(null)
 
   React.useEffect(() => {
     if (!brand) {
@@ -364,21 +426,49 @@ export function OnboardingWizard({
     }
   }
 
-  function removeTopic(topic: string) {
-    setTopics((current) => current.filter((value) => value.topicName !== topic))
+  function removeTopicById(topicId: string) {
+    setTopics((current) => current.filter((value) => value.id !== topicId))
     setValidation((current) => {
       const nextErrors = { ...current.topicPromptErrors }
-      const removedTopic = topics.find((value) => value.topicName === topic)
-
-      if (removedTopic) {
-        delete nextErrors[removedTopic.id]
-      }
-
-      return {
-        ...current,
-        topicPromptErrors: nextErrors,
-      }
+      delete nextErrors[topicId]
+      return { ...current, topicPromptErrors: nextErrors }
     })
+  }
+
+  function commitTopicEdit(topicId: string) {
+    const candidate = topicEditValue.trim()
+    const topic = topics.find((item) => item.id === topicId)
+    if (!topic) return
+
+    if (!candidate) {
+      setTopicMessage("Topic cannot be empty.")
+      return
+    }
+
+    const otherTopics = topics
+      .filter((item) => item.id !== topicId)
+      .map((item) => item.topicName)
+    const normalized = normalizeBrandTopics([...otherTopics, candidate])
+    const nextName = normalized.at(-1)
+
+    if (!nextName) {
+      setTopicMessage("That topic is invalid.")
+      return
+    }
+
+    if (normalized.length === otherTopics.length) {
+      setTopicMessage("That topic is already added.")
+      return
+    }
+
+    setTopics((current) =>
+      current.map((item) =>
+        item.id === topicId ? { ...item, topicName: nextName } : item
+      )
+    )
+    setEditingTopicId(null)
+    setTopicEditValue("")
+    setTopicMessage(undefined)
   }
 
   function updateCompetitor(
@@ -398,6 +488,18 @@ export function OnboardingWizard({
     )
   }
 
+  function setCompetitorEditing(id: string, editing: boolean) {
+    setEditingCompetitorIds((current) => {
+      const next = new Set(current)
+      if (editing) {
+        next.add(id)
+      } else {
+        next.delete(id)
+      }
+      return next
+    })
+  }
+
   function addCompetitorRow() {
     setCompetitors((current) => {
       if (current.length >= 20) {
@@ -409,7 +511,9 @@ export function OnboardingWizard({
         return current
       }
 
-      return [...current, createCompetitorRow()]
+      const next = createCompetitorRow()
+      setCompetitorEditing(next.id, true)
+      return [...current, next]
     })
   }
 
@@ -419,6 +523,7 @@ export function OnboardingWizard({
         ? current
         : current.filter((competitor) => competitor.id !== id)
     )
+    setCompetitorEditing(id, false)
   }
 
   function validateStepOne() {
@@ -573,7 +678,8 @@ export function OnboardingWizard({
       ).size
 
       if (activePrompts.length < 2) {
-        nextTopicPromptErrors[topic.id] = "Add at least 2 prompts for this topic."
+        nextTopicPromptErrors[topic.id] =
+          "Add at least 2 prompts for this topic."
         continue
       }
 
@@ -610,12 +716,12 @@ export function OnboardingWizard({
 
       setIsGeneratingTopicPrompts(true)
       setSubmitError(null)
-      setSaveMessage("Generating topic prompts...")
 
       try {
         const populatedCompetitors = competitors
           .filter(
-            (competitor) => competitor.name.trim() || competitor.website.trim()
+            (competitor) =>
+              competitor.name.trim() || competitor.website.trim()
           )
           .map((competitor) => ({
             name: competitor.name.trim(),
@@ -662,7 +768,6 @@ export function OnboardingWizard({
         )
       } finally {
         setIsGeneratingTopicPrompts(false)
-        setSaveMessage(null)
       }
     },
     [companyName, competitors, description, website]
@@ -673,7 +778,9 @@ export function OnboardingWizard({
       return
     }
 
-    const missingPrompts = topics.filter((topic) => topic.prompts.length === 0)
+    const missingPrompts = topics.filter(
+      (topic) => topic.prompts.length === 0
+    )
     const hasEnoughCompetitors =
       competitors.filter(
         (competitor) => competitor.name.trim() || competitor.website.trim()
@@ -693,24 +800,44 @@ export function OnboardingWizard({
     topics,
   ])
 
-  function updateTopicPrompt(topicId: string, promptId: string, value: string) {
-    setTopics((current) =>
-      current.map((topic) =>
-        topic.id === topicId
-          ? {
-              ...topic,
-              prompts: topic.prompts.map((prompt) =>
-                prompt.id === promptId
-                  ? {
-                      ...prompt,
-                      promptText: value,
-                    }
-                  : prompt
-              ),
-            }
-          : topic
+  function savePromptFromDialog(value: string) {
+    if (!promptDialog) return
+    const { topicId, mode, promptId } = promptDialog
+
+    if (mode === "add") {
+      setTopics((current) =>
+        current.map((topic) =>
+          topic.id === topicId
+            ? {
+                ...topic,
+                prompts: [
+                  ...topic.prompts,
+                  createPromptDraft({
+                    addedVia: "user_created",
+                    promptText: value,
+                  }),
+                ],
+              }
+            : topic
+        )
       )
-    )
+    } else if (promptId) {
+      setTopics((current) =>
+        current.map((topic) =>
+          topic.id === topicId
+            ? {
+                ...topic,
+                prompts: topic.prompts.map((prompt) =>
+                  prompt.id === promptId
+                    ? { ...prompt, promptText: value }
+                    : prompt
+                ),
+              }
+            : topic
+        )
+      )
+    }
+
     setValidation((current) => ({
       ...current,
       step4: undefined,
@@ -721,31 +848,15 @@ export function OnboardingWizard({
     }))
   }
 
-  function addPromptToTopic(topicId: string) {
-    setTopics((current) =>
-      current.map((topic) =>
-        topic.id === topicId
-          ? {
-              ...topic,
-              prompts: [
-                ...topic.prompts,
-                createPromptDraft({
-                  addedVia: "user_created",
-                }),
-              ],
-            }
-          : topic
-      )
-    )
-  }
-
   function removePromptFromTopic(topicId: string, promptId: string) {
     setTopics((current) =>
       current.map((topic) =>
         topic.id === topicId
           ? {
               ...topic,
-              prompts: topic.prompts.filter((prompt) => prompt.id !== promptId),
+              prompts: topic.prompts.filter(
+                (prompt) => prompt.id !== promptId
+              ),
             }
           : topic
       )
@@ -773,9 +884,6 @@ export function OnboardingWizard({
     if (currentStep === 1) {
       setPrefillNotice(null)
     }
-    setSaveMessage(
-      currentStep === 1 ? "Saving your brand basics..." : `Saving step ${currentStep}...`
-    )
     setSubmitError(null)
 
     try {
@@ -786,7 +894,6 @@ export function OnboardingWizard({
         })
 
         setProjectId(nextBrand.id)
-        setSaveMessage("Analyzing your homepage...")
         setIsPrefillingStepOne(true)
 
         try {
@@ -813,12 +920,20 @@ export function OnboardingWizard({
             competitorCount: suggestion.competitors.length,
             descriptionLength: suggestion.description.length,
             topics: suggestion.topics,
-            warnings: nextWarnings,
+            warnings: suggestion.warnings,
           })
 
           setDescription(suggestion.description)
           setTopics(buildTopicDrafts(suggestion.topics, "ai_suggested"))
-          setCompetitors(buildCompetitorRows(suggestion.competitors))
+          const nextCompetitors = buildCompetitorRows(suggestion.competitors)
+          setCompetitors(nextCompetitors)
+          setEditingCompetitorIds(
+            new Set(
+              nextCompetitors
+                .filter((row) => !row.name.trim() && !row.website.trim())
+                .map((row) => row.id)
+            )
+          )
 
           if (nextWarnings.length) {
             setPrefillNotice([...new Set(nextWarnings)].join(" "))
@@ -856,7 +971,6 @@ export function OnboardingWizard({
       )
     } finally {
       setIsSaving(false)
-      setSaveMessage(null)
     }
   }
 
@@ -886,7 +1000,6 @@ export function OnboardingWizard({
     }
 
     setIsSaving(true)
-    setSaveMessage("Finalizing your setup...")
     setSubmitError(null)
 
     try {
@@ -924,117 +1037,52 @@ export function OnboardingWizard({
       )
     } finally {
       setIsSaving(false)
-      setSaveMessage(null)
     }
   }
 
   const currentMeta = stepMeta[currentStep - 1]
   const descriptionLength = description.length
-  const progressValue = (currentStep / stepMeta.length) * 100
+  const completedSteps = React.useMemo(() => {
+    const set = new Set<number>()
+    for (let i = 1; i < currentStep; i += 1) {
+      set.add(i)
+    }
+    return set
+  }, [currentStep])
+
+  const primaryLabel = currentStep === 4 ? "Complete setup" : "Continue"
+  const primaryLoadingLabel =
+    currentStep === 1 && isPrefillingStepOne
+      ? "Analyzing your homepage…"
+      : currentStep === 3 && isGeneratingTopicPrompts
+        ? "Generating prompts…"
+        : currentStep === 4
+          ? "Completing setup…"
+          : "Saving…"
 
   return (
-    <div className="min-h-svh bg-muted/30">
-      <div className="mx-auto flex min-h-svh w-full max-w-6xl flex-col gap-4 p-4 lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
-        <Card size="sm" className="gap-0 lg:sticky lg:top-4">
-          <CardHeader className="gap-3 border-b bg-muted/30">
-            <Badge variant="outline">Onboarding</Badge>
-            <div className="space-y-1">
-              <CardTitle className="text-base">
-                Launch your brand profile
-              </CardTitle>
-              <CardDescription>
-                Set up the signals Sitebench needs before we start tracking how
-                your brand appears across AI search surfaces.
-              </CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4 py-4">
-            <div className="flex flex-col gap-2">
-              {stepMeta.map((step) => {
-                const isActive = step.key === currentStep
-                const isComplete = step.key < currentStep
+    <div className="flex h-dvh overflow-hidden bg-background">
+      <OnboardingSidebar
+        steps={sidebarSteps}
+        currentStep={currentStep}
+        completedSteps={completedSteps}
+      />
 
-                return (
-                  <div
-                    key={step.key}
-                    className={cn(
-                      "border px-3 py-3 transition-colors",
-                      isActive
-                        ? "border-primary bg-muted"
-                        : "border-border bg-background",
-                      isComplete && "border-border bg-secondary/35"
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm font-medium">{step.label}</div>
-                      <Badge
-                        variant={
-                          isActive
-                            ? "default"
-                            : isComplete
-                              ? "secondary"
-                              : "outline"
-                        }
-                      >
-                        {isComplete
-                          ? "Done"
-                          : isActive
-                            ? "Current"
-                            : `Step ${step.key}`}
-                      </Badge>
-                    </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {step.description}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            <Separator />
-
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  Progress
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {currentStep}/{stepMeta.length}
-                </div>
-              </div>
-              <Progress
-                aria-label="Onboarding progress"
-                aria-valuemax={100}
-                aria-valuemin={0}
-                aria-valuenow={progressValue}
-                value={progressValue}
-              />
-              <div className="text-xs text-muted-foreground">
-                {currentMeta.description}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="flex flex-col gap-4">
-          <Card size="sm">
-            <CardContent className="flex flex-wrap items-center justify-between gap-3 py-3">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline">Step {currentStep} of 4</Badge>
-                <span className="text-xs text-muted-foreground">
-                  {currentMeta.description}
-                </span>
-              </div>
-              {saveMessage ? (
-                <Badge variant="secondary">{saveMessage}</Badge>
-              ) : null}
-            </CardContent>
-          </Card>
+      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-6 py-10 md:px-10 md:py-14">
+          <header className="mb-8 space-y-2">
+            <h1 className="font-serif text-3xl leading-tight md:text-4xl">
+              {currentMeta.heading}
+            </h1>
+            <p className="text-base text-muted-foreground">
+              {currentMeta.subtitle}
+            </p>
+          </header>
 
           {prefillNotice ? (
             <div
               role="status"
-              className="border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+              className="mb-6 rounded-md border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
             >
               {prefillNotice}
             </div>
@@ -1043,461 +1091,674 @@ export function OnboardingWizard({
           {submitError ? (
             <div
               role="alert"
-              className="border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+              className="mb-6 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
             >
               {submitError}
             </div>
           ) : null}
 
-          <Card className="gap-0 py-0">
-            <CardHeader className="border-b bg-muted/30 px-4 py-4">
-              <CardTitle className="text-base">{currentMeta.label}</CardTitle>
-              <CardDescription>
-                {currentStep === 1
-                  ? "Add the brand name and website you want us to track."
-                  : currentStep === 2
-                    ? "Review the suggested description or write your own concise version."
-                    : currentStep === 3
-                      ? "List the companies you want to benchmark against."
-                      : "Review the suggested topics and prompts or add the ones you want to track."}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="px-4 py-4">
-              <div
-                key={currentStep}
-                className="duration-300 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2"
-              >
-                {currentStep === 1 ? (
-                  <FieldGroup>
-                    <Field data-invalid={Boolean(validation.step1Website)}>
-                      <FieldLabel htmlFor="company-website">
-                        Company website
-                      </FieldLabel>
-                      <Input
-                        id="company-website"
-                        placeholder="example.com"
-                        value={website}
-                        onChange={(event) => {
-                          setWebsite(event.target.value)
-                          setValidation((current) => ({
-                            ...current,
-                            step1Website: undefined,
-                          }))
-                        }}
-                        aria-invalid={Boolean(validation.step1Website)}
-                      />
-                      <BrandPreview website={website} name={companyName} />
-                      {validation.step1Website ? (
-                        <FieldDescription className="text-destructive">
-                          {validation.step1Website}
-                        </FieldDescription>
-                      ) : (
-                        <FieldDescription>
-                          We will use this as the source of truth for the brand
-                          profile.
-                        </FieldDescription>
-                      )}
-                    </Field>
-                    <Field data-invalid={Boolean(validation.step1CompanyName)}>
-                      <FieldLabel htmlFor="company-name">
-                        Company name
-                      </FieldLabel>
-                      <Input
-                        id="company-name"
-                        placeholder="Acme"
-                        value={companyName}
-                        onChange={(event) => {
-                          setCompanyName(event.target.value)
-                          setValidation((current) => ({
-                            ...current,
-                            step1CompanyName: undefined,
-                          }))
-                        }}
-                        aria-invalid={Boolean(validation.step1CompanyName)}
-                      />
-                      {validation.step1CompanyName ? (
-                        <FieldDescription className="text-destructive">
-                          {validation.step1CompanyName}
-                        </FieldDescription>
-                        ) : null}
-                    </Field>
+          <div
+            key={currentStep}
+            className="flex-1 duration-300 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2"
+          >
+            {currentStep === 1 ? (
+              <FieldGroup>
+                <Field data-invalid={Boolean(validation.step1Website)}>
+                  <FieldLabel htmlFor="company-website">
+                    Company website
+                  </FieldLabel>
+                  <Input
+                    id="company-website"
+                    placeholder="example.com"
+                    value={website}
+                    onChange={(event) => {
+                      setWebsite(event.target.value)
+                      setValidation((current) => ({
+                        ...current,
+                        step1Website: undefined,
+                      }))
+                    }}
+                    aria-invalid={Boolean(validation.step1Website)}
+                  />
+                  <BrandPreview website={website} name={companyName} />
+                  {validation.step1Website ? (
+                    <FieldDescription className="text-destructive">
+                      {validation.step1Website}
+                    </FieldDescription>
+                  ) : (
+                    <FieldDescription>
+                      We will use this as the source of truth for the brand
+                      profile.
+                    </FieldDescription>
+                  )}
+                </Field>
+                <Field data-invalid={Boolean(validation.step1CompanyName)}>
+                  <FieldLabel htmlFor="company-name">Company name</FieldLabel>
+                  <Input
+                    id="company-name"
+                    placeholder="Acme"
+                    value={companyName}
+                    onChange={(event) => {
+                      setCompanyName(event.target.value)
+                      setValidation((current) => ({
+                        ...current,
+                        step1CompanyName: undefined,
+                      }))
+                    }}
+                    aria-invalid={Boolean(validation.step1CompanyName)}
+                  />
+                  {validation.step1CompanyName ? (
+                    <FieldDescription className="text-destructive">
+                      {validation.step1CompanyName}
+                    </FieldDescription>
+                  ) : null}
+                </Field>
 
-                    {isPrefillingStepOne ? (
-                      <div className="border border-dashed border-border bg-muted/30 p-4">
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="space-y-1">
-                            <div className="text-sm font-medium">
-                              Generating suggestions from your homepage
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              We&apos;re preparing a suggested description, topics,
-                              and competitors for review.
-                            </div>
-                          </div>
-                          <Badge variant="secondary">In progress</Badge>
+                {isPrefillingStepOne ? (
+                  <div className="rounded-md border border-dashed border-border bg-muted/30 p-4">
+                    <div className="flex items-center gap-3">
+                      <Spinner className="size-4" />
+                      <div className="space-y-0.5">
+                        <div className="text-sm font-medium">
+                          Analyzing your homepage
                         </div>
-                        <Progress
-                          className="mt-4"
-                          aria-label="Generating onboarding suggestions"
-                          value={66}
-                        />
-                        <div className="mt-4 grid gap-3 md:grid-cols-2">
-                          <Skeleton className="h-20 w-full" />
-                          <Skeleton className="h-20 w-full" />
-                          <Skeleton className="h-28 w-full md:col-span-2" />
+                        <div className="text-xs text-muted-foreground">
+                          Preparing a suggested description, topics, and
+                          competitors.
                         </div>
                       </div>
-                    ) : null}
-                  </FieldGroup>
-                ) : null}
-
-                {currentStep === 2 ? (
-                  <FieldGroup>
-                    <Field data-invalid={Boolean(validation.description)}>
-                      <div className="flex items-center justify-between gap-4">
-                        <FieldLabel htmlFor="business-description">
-                          Business description
-                        </FieldLabel>
-                        <span className="text-[11px] tracking-[0.2em] text-muted-foreground uppercase">
-                          {descriptionLength}/500
-                        </span>
-                      </div>
-                      <Textarea
-                        id="business-description"
-                        value={description}
-                        maxLength={500}
-                        onChange={(event) => {
-                          setDescription(event.target.value)
-                          setValidation((current) => ({
-                            ...current,
-                            description: undefined,
-                          }))
-                        }}
-                        aria-invalid={Boolean(validation.description)}
-                      />
-                      {validation.description ? (
-                        <FieldDescription className="text-destructive">
-                          {validation.description}
-                        </FieldDescription>
-                      ) : (
-                        <FieldDescription>
-                          500 characters max. Keep it specific and
-                          customer-facing.
-                        </FieldDescription>
-                      )}
-                    </Field>
-                  </FieldGroup>
-                ) : null}
-
-                {currentStep === 3 ? (
-                  <div className="flex flex-col gap-5">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="text-sm text-muted-foreground">
-                        Add at least 3 competitors. You can track up to 20.
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={addCompetitorRow}
-                        disabled={isSaving || competitors.length >= 20}
-                      >
-                        Add competitor
-                      </Button>
                     </div>
-
-                    <div className="space-y-4">
-                      {competitors.map((competitor, index) => {
-                        const rowErrors = validation.competitors[index] ?? {}
-
-                        return (
-                          <Card
-                            key={competitor.id}
-                            size="sm"
-                            className="gap-0 py-0"
-                          >
-                            <CardHeader className="border-b bg-muted/20">
-                              <div className="flex items-center justify-between gap-3">
-                                <CardTitle>Competitor {index + 1}</CardTitle>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() =>
-                                    removeCompetitorRow(competitor.id)
-                                  }
-                                  aria-label={`Remove competitor ${index + 1}`}
-                                  disabled={
-                                    isSaving || competitors.length === 1
-                                  }
-                                >
-                                  Remove competitor
-                                </Button>
-                              </div>
-                            </CardHeader>
-                            <CardContent className="py-3">
-                              <FieldGroup>
-                                <Field data-invalid={Boolean(rowErrors.name)}>
-                                  <FieldLabel
-                                    htmlFor={`competitor-name-${competitor.id}`}
-                                  >
-                                    Competitor name {index + 1}
-                                  </FieldLabel>
-                                  <Input
-                                    id={`competitor-name-${competitor.id}`}
-                                    value={competitor.name}
-                                    onChange={(event) =>
-                                      updateCompetitor(
-                                        competitor.id,
-                                        "name",
-                                        event.target.value
-                                      )
-                                    }
-                                    aria-invalid={Boolean(rowErrors.name)}
-                                  />
-                                  {rowErrors.name ? (
-                                    <FieldDescription className="text-destructive">
-                                      {rowErrors.name}
-                                    </FieldDescription>
-                                  ) : null}
-                                </Field>
-                                <Field
-                                  data-invalid={Boolean(rowErrors.website)}
-                                >
-                                  <FieldLabel
-                                    htmlFor={`competitor-website-${competitor.id}`}
-                                  >
-                                    Competitor website {index + 1}
-                                  </FieldLabel>
-                                  <Input
-                                    id={`competitor-website-${competitor.id}`}
-                                    value={competitor.website}
-                                    onChange={(event) =>
-                                      updateCompetitor(
-                                        competitor.id,
-                                        "website",
-                                        event.target.value
-                                      )
-                                    }
-                                    aria-invalid={Boolean(rowErrors.website)}
-                                  />
-                                  <BrandPreview
-                                    website={competitor.website}
-                                    name={competitor.name}
-                                  />
-                                  {rowErrors.website ? (
-                                    <FieldDescription className="text-destructive">
-                                      {rowErrors.website}
-                                    </FieldDescription>
-                                  ) : null}
-                                </Field>
-                              </FieldGroup>
-                            </CardContent>
-                          </Card>
-                        )
-                      })}
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <Skeleton className="h-20 w-full" />
+                      <Skeleton className="h-20 w-full" />
+                      <Skeleton className="h-28 w-full md:col-span-2" />
                     </div>
-
-                    {validation.step3 ? (
-                      <FieldDescription className="text-destructive">
-                        {validation.step3}
-                      </FieldDescription>
-                    ) : null}
                   </div>
                 ) : null}
+              </FieldGroup>
+            ) : null}
 
-                {currentStep === 4 ? (
-                  <div className="flex flex-col gap-5">
-                    <FieldGroup>
-                      <Field data-invalid={Boolean(validation.topicInput)}>
-                        <FieldLabel htmlFor="topic-input">
-                          Add a topic
-                        </FieldLabel>
-                        <div className="flex flex-col gap-3 sm:flex-row">
-                          <Input
-                            id="topic-input"
-                            value={topicInput}
-                            placeholder="AI search"
-                            onChange={(event) => {
-                              setTopicInput(event.target.value)
-                              setTopicMessage(undefined)
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault()
-                                addTopicFromInput()
-                              }
-                            }}
-                            aria-invalid={Boolean(validation.topicInput)}
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={addTopicFromInput}
-                            disabled={isSaving || isGeneratingTopicPrompts}
-                          >
-                            Add topic
-                          </Button>
-                        </div>
-                        {validation.topicInput ? (
-                          <FieldDescription className="text-destructive">
-                            {validation.topicInput}
-                          </FieldDescription>
-                        ) : (
-                          <FieldDescription>
-                            Press Enter to add each topic. Minimum 3, maximum
-                            10. Each topic needs at least 2 prompts.
-                          </FieldDescription>
-                        )}
-                      </Field>
-                    </FieldGroup>
+            {currentStep === 2 ? (
+              <FieldGroup>
+                <Field data-invalid={Boolean(validation.description)}>
+                  <div className="flex items-center justify-between gap-4">
+                    <FieldLabel htmlFor="business-description">
+                      Business description
+                    </FieldLabel>
+                    <span className="text-[11px] tracking-[0.2em] text-muted-foreground uppercase">
+                      {descriptionLength}/500
+                    </span>
+                  </div>
+                  <Textarea
+                    id="business-description"
+                    value={description}
+                    maxLength={500}
+                    rows={6}
+                    onChange={(event) => {
+                      setDescription(event.target.value)
+                      setValidation((current) => ({
+                        ...current,
+                        description: undefined,
+                      }))
+                    }}
+                    aria-invalid={Boolean(validation.description)}
+                  />
+                  {validation.description ? (
+                    <FieldDescription className="text-destructive">
+                      {validation.description}
+                    </FieldDescription>
+                  ) : (
+                    <FieldDescription>
+                      500 characters max. Keep it specific and customer-facing.
+                    </FieldDescription>
+                  )}
+                </Field>
+              </FieldGroup>
+            ) : null}
 
-                    <div className="flex min-h-16 flex-wrap gap-2 border border-dashed border-border bg-muted/30 p-3">
-                      {topics.length ? (
-                        topics.map((topic) => (
-                          <Badge key={topic.id} asChild variant="secondary">
-                            <button
-                              type="button"
-                              onClick={() => removeTopic(topic.topicName)}
-                              aria-label={`Remove topic ${topic.topicName}`}
-                            >
-                              <span>{topic.topicName}</span>
-                              <span className="text-muted-foreground">x</span>
-                            </button>
-                          </Badge>
-                        ))
-                      ) : (
-                        <span className="text-sm text-muted-foreground">
-                          No topics added yet.
-                        </span>
-                      )}
-                    </div>
+            {currentStep === 3 ? (
+              <div className="flex flex-col gap-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-sm text-muted-foreground">
+                    Add at least 3 competitors. You can track up to 20.
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={addCompetitorRow}
+                    disabled={isSaving || competitors.length >= 20}
+                  >
+                    <HugeiconsIcon icon={Add01Icon} className="size-4" />
+                    Add competitor
+                  </Button>
+                </div>
 
-                    <div className="space-y-4">
-                      {topics.map((topic, topicIndex) => (
-                        <Card key={topic.id} size="sm" className="gap-0 py-0">
-                          <CardHeader className="border-b bg-muted/20">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-2">
-                                <CardTitle className="text-sm">
-                                  Topic {topicIndex + 1}: {topic.topicName}
-                                </CardTitle>
-                                <Badge variant="outline">
-                                  {topic.source === "ai_suggested"
-                                    ? "AI suggested"
-                                    : "User added"}
-                                </Badge>
-                              </div>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() => addPromptToTopic(topic.id)}
-                              >
-                                Add prompt
-                              </Button>
-                            </div>
-                          </CardHeader>
-                          <CardContent className="space-y-4 py-3">
-                            {topic.prompts.map((prompt, promptIndex) => (
-                              <Field
-                                key={prompt.id}
-                                data-invalid={Boolean(
-                                  validation.topicPromptErrors[topic.id]
-                                )}
-                              >
-                                <div className="flex items-center justify-between gap-3">
-                                  <FieldLabel
-                                    htmlFor={`topic-prompt-${topic.id}-${prompt.id}`}
-                                  >
-                                    Prompt {promptIndex + 1}
-                                  </FieldLabel>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() =>
-                                      removePromptFromTopic(topic.id, prompt.id)
-                                    }
-                                  >
-                                    Remove prompt
-                                  </Button>
-                                </div>
-                                <Textarea
-                                  id={`topic-prompt-${topic.id}-${prompt.id}`}
-                                  value={prompt.promptText}
+                <div className="flex flex-col gap-2">
+                  {competitors.map((competitor, index) => {
+                    const rowErrors = validation.competitors[index] ?? {}
+                    const isEditing = editingCompetitorIds.has(competitor.id)
+                    const hasContent =
+                      competitor.name.trim() || competitor.website.trim()
+
+                    return (
+                      <div
+                        key={competitor.id}
+                        className="rounded-lg border border-border bg-card"
+                      >
+                        {isEditing ? (
+                          <div className="space-y-3 p-4">
+                            <FieldGroup>
+                              <Field data-invalid={Boolean(rowErrors.name)}>
+                                <FieldLabel
+                                  htmlFor={`competitor-name-${competitor.id}`}
+                                >
+                                  Competitor name
+                                </FieldLabel>
+                                <Input
+                                  id={`competitor-name-${competitor.id}`}
+                                  value={competitor.name}
                                   onChange={(event) =>
-                                    updateTopicPrompt(
-                                      topic.id,
-                                      prompt.id,
+                                    updateCompetitor(
+                                      competitor.id,
+                                      "name",
                                       event.target.value
                                     )
                                   }
-                                  aria-invalid={Boolean(
-                                    validation.topicPromptErrors[topic.id]
-                                  )}
-                                  rows={3}
+                                  aria-invalid={Boolean(rowErrors.name)}
                                 />
+                                {rowErrors.name ? (
+                                  <FieldDescription className="text-destructive">
+                                    {rowErrors.name}
+                                  </FieldDescription>
+                                ) : null}
                               </Field>
-                            ))}
+                              <Field data-invalid={Boolean(rowErrors.website)}>
+                                <FieldLabel
+                                  htmlFor={`competitor-website-${competitor.id}`}
+                                >
+                                  Competitor website
+                                </FieldLabel>
+                                <Input
+                                  id={`competitor-website-${competitor.id}`}
+                                  value={competitor.website}
+                                  onChange={(event) =>
+                                    updateCompetitor(
+                                      competitor.id,
+                                      "website",
+                                      event.target.value
+                                    )
+                                  }
+                                  aria-invalid={Boolean(rowErrors.website)}
+                                />
+                                <BrandPreview
+                                  website={competitor.website}
+                                  name={competitor.name}
+                                />
+                                {rowErrors.website ? (
+                                  <FieldDescription className="text-destructive">
+                                    {rowErrors.website}
+                                  </FieldDescription>
+                                ) : null}
+                              </Field>
+                            </FieldGroup>
+                            <div className="flex items-center justify-end gap-2 pt-1">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  if (
+                                    competitors.length > 1 &&
+                                    !hasContent
+                                  ) {
+                                    removeCompetitorRow(competitor.id)
+                                  } else {
+                                    setCompetitorEditing(competitor.id, false)
+                                  }
+                                }}
+                              >
+                                {hasContent ? "Done" : "Cancel"}
+                              </Button>
+                              {hasContent ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() =>
+                                    setCompetitorEditing(competitor.id, false)
+                                  }
+                                >
+                                  <HugeiconsIcon
+                                    icon={Tick02Icon}
+                                    className="size-4"
+                                  />
+                                  Save
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-3 px-4 py-3">
+                            <div className="flex min-w-0 flex-1 items-center">
+                              <BrandPreview
+                                className="flex-1 border-0 bg-transparent px-0 py-0"
+                                website={competitor.website}
+                                name={competitor.name}
+                              />
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={`Edit competitor ${index + 1}`}
+                                onClick={() =>
+                                  setCompetitorEditing(competitor.id, true)
+                                }
+                              >
+                                <HugeiconsIcon
+                                  icon={Edit02Icon}
+                                  className="size-4"
+                                />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={`Remove competitor ${index + 1}`}
+                                disabled={
+                                  isSaving || competitors.length === 1
+                                }
+                                onClick={() =>
+                                  setConfirmRemove({
+                                    kind: "competitor",
+                                    label:
+                                      competitor.name || "this competitor",
+                                    onConfirm: () =>
+                                      removeCompetitorRow(competitor.id),
+                                  })
+                                }
+                              >
+                                <HugeiconsIcon
+                                  icon={Delete02Icon}
+                                  className="size-4"
+                                />
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
 
-                            {validation.topicPromptErrors[topic.id] ? (
-                              <FieldDescription className="text-destructive">
-                                {validation.topicPromptErrors[topic.id]}
-                              </FieldDescription>
-                            ) : null}
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-
-                    {validation.step4 ? (
-                      <FieldDescription className="text-destructive">
-                        {validation.step4}
-                      </FieldDescription>
-                    ) : null}
-                  </div>
+                {validation.step3 ? (
+                  <FieldDescription className="text-destructive">
+                    {validation.step3}
+                  </FieldDescription>
                 ) : null}
               </div>
+            ) : null}
 
-              <Separator className="my-6" />
+            {currentStep === 4 ? (
+              <div className="flex flex-col gap-6">
+                <Field data-invalid={Boolean(validation.topicInput)}>
+                  <FieldLabel htmlFor="topic-input">Add a topic</FieldLabel>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <Input
+                      id="topic-input"
+                      value={topicInput}
+                      placeholder="AI search"
+                      onChange={(event) => {
+                        setTopicInput(event.target.value)
+                        setTopicMessage(undefined)
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault()
+                          addTopicFromInput()
+                        }
+                      }}
+                      aria-invalid={Boolean(validation.topicInput)}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={addTopicFromInput}
+                      disabled={isSaving || isGeneratingTopicPrompts}
+                    >
+                      <HugeiconsIcon icon={Add01Icon} className="size-4" />
+                      Add topic
+                    </Button>
+                  </div>
+                  {validation.topicInput ? (
+                    <FieldDescription className="text-destructive">
+                      {validation.topicInput}
+                    </FieldDescription>
+                  ) : (
+                    <FieldDescription>
+                      Minimum 3, maximum 10. Each topic needs at least 2
+                      prompts.
+                    </FieldDescription>
+                  )}
+                </Field>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    if (currentStep > 1) {
-                      clearValidation()
-                      setCurrentStep((current) => (current - 1) as StepKey)
-                    }
-                  }}
-                  disabled={isSaving || currentStep === 1}
-                >
-                  Back
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    void (currentStep === 4 ? handleComplete() : handleNext())
-                  }}
-                  disabled={isSaving || isGeneratingTopicPrompts}
-                  className="sm:min-w-40"
-                >
-                  {isSaving || isGeneratingTopicPrompts
-                    ? currentStep === 4
-                      ? isGeneratingTopicPrompts
-                        ? "Generating prompts..."
-                        : "Completing setup..."
-                      : "Saving and continuing..."
-                    : currentStep === 4
-                      ? "Complete setup"
-                      : "Save and continue"}
-                </Button>
+                {isGeneratingTopicPrompts ? (
+                  <div className="flex items-center gap-3 rounded-md border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                    <Spinner className="size-4" />
+                    Generating prompt suggestions…
+                  </div>
+                ) : null}
+
+                <div className="flex flex-col gap-4">
+                  {topics.length === 0 ? (
+                    <div className="rounded-md border border-dashed border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
+                      No topics yet. Add at least 3 to continue.
+                    </div>
+                  ) : null}
+
+                  {topics.map((topic, topicIndex) => {
+                    const isEditingTopic = editingTopicId === topic.id
+
+                    return (
+                      <div
+                        key={topic.id}
+                        className="rounded-lg border border-border bg-card"
+                      >
+                        <div className="flex items-center justify-between gap-3 rounded-t-lg border-b bg-muted/30 px-4 py-3">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+                              Topic {topicIndex + 1}
+                            </span>
+                            {isEditingTopic ? (
+                              <Input
+                                autoFocus
+                                value={topicEditValue}
+                                onChange={(event) =>
+                                  setTopicEditValue(event.target.value)
+                                }
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.preventDefault()
+                                    commitTopicEdit(topic.id)
+                                  }
+                                  if (event.key === "Escape") {
+                                    event.preventDefault()
+                                    setEditingTopicId(null)
+                                    setTopicEditValue("")
+                                    setTopicMessage(undefined)
+                                  }
+                                }}
+                                onBlur={() => commitTopicEdit(topic.id)}
+                                className="h-8"
+                              />
+                            ) : (
+                              <span className="truncate text-sm font-medium">
+                                {topic.topicName}
+                              </span>
+                            )}
+                            <span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] tracking-wide text-muted-foreground uppercase">
+                              {topic.source === "ai_suggested"
+                                ? "AI"
+                                : "Custom"}
+                            </span>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            {isEditingTopic ? (
+                              <Button
+                                type="button"
+                                size="icon-sm"
+                                variant="ghost"
+                                aria-label="Cancel topic edit"
+                                onMouseDown={(event) => {
+                                  event.preventDefault()
+                                  setEditingTopicId(null)
+                                  setTopicEditValue("")
+                                  setTopicMessage(undefined)
+                                }}
+                              >
+                                <HugeiconsIcon
+                                  icon={Cancel01Icon}
+                                  className="size-4"
+                                />
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                size="icon-sm"
+                                variant="ghost"
+                                aria-label={`Edit topic ${topic.topicName}`}
+                                onClick={() => {
+                                  setEditingTopicId(topic.id)
+                                  setTopicEditValue(topic.topicName)
+                                }}
+                              >
+                                <HugeiconsIcon
+                                  icon={Edit02Icon}
+                                  className="size-4"
+                                />
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              size="icon-sm"
+                              variant="ghost"
+                              aria-label={`Remove topic ${topic.topicName}`}
+                              onClick={() =>
+                                setConfirmRemove({
+                                  kind: "topic",
+                                  label: topic.topicName,
+                                  onConfirm: () => removeTopicById(topic.id),
+                                })
+                              }
+                            >
+                              <HugeiconsIcon
+                                icon={Delete02Icon}
+                                className="size-4"
+                              />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2 px-4 py-3">
+                          {topic.prompts.length === 0 ? (
+                            <div className="text-xs text-muted-foreground">
+                              No prompts yet.
+                            </div>
+                          ) : (
+                            topic.prompts.map((prompt, promptIndex) => (
+                              <div
+                                key={prompt.id}
+                                className="flex flex-col gap-3 rounded-lg border border-border/60 bg-background px-4 py-3"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0 text-sm">
+                                    <div className="mb-1 text-[11px] tracking-wide text-muted-foreground uppercase">
+                                      Prompt {promptIndex + 1}
+                                    </div>
+                                    <div className="line-clamp-2 text-foreground">
+                                      {prompt.promptText || (
+                                        <span className="text-muted-foreground italic">
+                                          Empty prompt
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    <Button
+                                      type="button"
+                                      size="icon-sm"
+                                      variant="ghost"
+                                      aria-label={`Edit prompt ${promptIndex + 1}`}
+                                      onClick={() =>
+                                        setPromptDialog({
+                                          mode: "edit",
+                                          topicId: topic.id,
+                                          topicName: topic.topicName,
+                                          promptId: prompt.id,
+                                          initialValue: prompt.promptText,
+                                        })
+                                      }
+                                    >
+                                      <HugeiconsIcon
+                                        icon={Edit02Icon}
+                                        className="size-4"
+                                      />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      size="icon-sm"
+                                      variant="ghost"
+                                      aria-label={`Remove prompt ${promptIndex + 1}`}
+                                      onClick={() =>
+                                        setConfirmRemove({
+                                          kind: "prompt",
+                                          label: `prompt ${promptIndex + 1}`,
+                                          onConfirm: () =>
+                                            removePromptFromTopic(
+                                              topic.id,
+                                              prompt.id
+                                            ),
+                                        })
+                                      }
+                                    >
+                                      <HugeiconsIcon
+                                        icon={Delete02Icon}
+                                        className="size-4"
+                                      />
+                                    </Button>
+                                  </div>
+                                </div>
+                                <ProviderLogos
+                                  variant="compact"
+                                  label="Evaluated by"
+                                />
+                              </div>
+                            ))
+                          )}
+
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="self-start"
+                            onClick={() =>
+                              setPromptDialog({
+                                mode: "add",
+                                topicId: topic.id,
+                                topicName: topic.topicName,
+                              })
+                            }
+                          >
+                            <HugeiconsIcon
+                              icon={Add01Icon}
+                              className="size-4"
+                            />
+                            Add prompt
+                          </Button>
+
+                          {validation.topicPromptErrors[topic.id] ? (
+                            <FieldDescription className="text-destructive">
+                              {validation.topicPromptErrors[topic.id]}
+                            </FieldDescription>
+                          ) : null}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {validation.step4 ? (
+                  <FieldDescription className="text-destructive">
+                    {validation.step4}
+                  </FieldDescription>
+                ) : null}
               </div>
-            </CardContent>
-          </Card>
+            ) : null}
+          </div>
         </div>
-      </div>
+
+        <footer className="sticky bottom-0 z-10 border-t bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/70">
+          <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3 px-6 py-4 md:px-10">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (currentStep > 1) {
+                  clearValidation()
+                  setCurrentStep((current) => (current - 1) as StepKey)
+                }
+              }}
+              disabled={isSaving || currentStep === 1}
+            >
+              <HugeiconsIcon icon={ArrowLeft01Icon} className="size-4" />
+              Back
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                void (currentStep === 4 ? handleComplete() : handleNext())
+              }}
+              disabled={isSaving || isGeneratingTopicPrompts}
+              className={cn("min-w-44", "justify-center")}
+            >
+              {isSaving || isGeneratingTopicPrompts ? (
+                <>
+                  <Spinner className={cn("size-4", "text-primary-foreground")} />
+                  {primaryLoadingLabel}
+                </>
+              ) : (
+                <>
+                  {primaryLabel}
+                  <HugeiconsIcon
+                    icon={ArrowRight01Icon}
+                    className="size-4"
+                  />
+                </>
+              )}
+            </Button>
+          </div>
+        </footer>
+      </main>
+
+      <PromptEditDialog
+        open={Boolean(promptDialog)}
+        onOpenChange={(open) => {
+          if (!open) setPromptDialog(null)
+        }}
+        mode={promptDialog?.mode ?? "add"}
+        topicName={promptDialog?.topicName ?? ""}
+        initialValue={promptDialog?.initialValue}
+        onSubmit={savePromptFromDialog}
+      />
+
+      <AlertDialog
+        open={Boolean(confirmRemove)}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRemove(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {confirmRemove?.kind}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              &quot;{confirmRemove?.label}&quot; will be removed. You can add it
+              back later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                confirmRemove?.onConfirm()
+                setConfirmRemove(null)
+              }}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

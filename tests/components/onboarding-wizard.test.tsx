@@ -243,11 +243,9 @@ describe("Onboarding wizard", () => {
   it("renders step 1 by default for a first-time user", async () => {
     await renderWizard()
 
-    expect(screen.getByText("Step 1 of 4")).toBeInTheDocument()
-    expect(screen.getByRole("progressbar")).toHaveAttribute(
-      "aria-valuenow",
-      "25"
-    )
+    expect(
+      screen.getByRole("heading", { name: "Let's set up your brand" })
+    ).toBeInTheDocument()
     expect(screen.getAllByText("Brand basics").length).toBeGreaterThan(0)
     expect(screen.getByLabelText("Company website")).toBeInTheDocument()
     expect(screen.getByLabelText("Company name")).toBeInTheDocument()
@@ -258,7 +256,7 @@ describe("Onboarding wizard", () => {
 
     await renderWizard()
 
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
     expect(mockSaveBrandDraftStep).not.toHaveBeenCalled()
     expect(
@@ -274,7 +272,7 @@ describe("Onboarding wizard", () => {
 
     await user.type(screen.getByLabelText("Company website"), "foo")
     await user.type(screen.getByLabelText("Company name"), "acme.com")
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
     expect(mockSaveBrandDraftStep).not.toHaveBeenCalled()
     expect(await screen.findByText("Enter a valid website")).toBeInTheDocument()
@@ -303,10 +301,12 @@ describe("Onboarding wizard", () => {
 
     await user.type(screen.getByLabelText("Company website"), "acme.com")
     await user.type(screen.getByLabelText("Company name"), "Acme")
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
     expect(await screen.findByText("Schema mismatch")).toBeInTheDocument()
-    expect(screen.getByText("Step 1 of 4")).toBeInTheDocument()
+    expect(
+      screen.getByRole("heading", { name: "Let's set up your brand" })
+    ).toBeInTheDocument()
   })
 
   it("saves step 1 and advances to step 2", async () => {
@@ -323,7 +323,7 @@ describe("Onboarding wizard", () => {
 
     await user.type(screen.getByLabelText("Company website"), "acme.com")
     await user.type(screen.getByLabelText("Company name"), "Acme")
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
     await waitFor(() =>
       expect(mockSaveBrandDraftStep).toHaveBeenCalledWith(expect.any(Object), {
@@ -341,7 +341,9 @@ describe("Onboarding wizard", () => {
     await waitFor(() =>
       expect(screen.getAllByText("Description").length).toBeGreaterThan(0)
     )
-    expect(screen.getByText("Step 2 of 4")).toBeInTheDocument()
+    expect(
+      screen.getByRole("heading", { name: "Describe what you do" })
+    ).toBeInTheDocument()
     expect(screen.getByDisplayValue("Suggested description")).toBeInTheDocument()
   })
 
@@ -374,10 +376,10 @@ describe("Onboarding wizard", () => {
 
     await user.type(screen.getByLabelText("Company website"), "acme.com")
     await user.type(screen.getByLabelText("Company name"), "Acme")
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
     expect(
-      await screen.findByText("Generating suggestions from your homepage")
+      await screen.findByText("Analyzing your homepage")
     ).toBeInTheDocument()
 
     resolveSuggestions!({
@@ -387,7 +389,9 @@ describe("Onboarding wizard", () => {
       warnings: [],
     })
 
-    expect(await screen.findByText("Step 2 of 4")).toBeInTheDocument()
+    expect(
+      await screen.findByRole("heading", { name: "Describe what you do" })
+    ).toBeInTheDocument()
   })
 
   it("blocks invalid step 2 submissions", async () => {
@@ -401,7 +405,7 @@ describe("Onboarding wizard", () => {
     )
 
     expect(screen.getAllByText("Description").length).toBeGreaterThan(0)
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
     expect(mockSaveBrandDraftStep).not.toHaveBeenCalled()
     expect(
@@ -518,10 +522,10 @@ describe("Onboarding wizard", () => {
     )
 
     expect(screen.getAllByText("Competitors").length).toBeGreaterThan(0)
-    expect(screen.getByDisplayValue("Competitor 1")).toBeInTheDocument()
+    expect(screen.getAllByText("Competitor 1").length).toBeGreaterThan(0)
     expect(
-      screen.getByDisplayValue("https://competitor-2.com")
-    ).toBeInTheDocument()
+      screen.getAllByText("https://competitor-2.com").length
+    ).toBeGreaterThan(0)
   })
 
   it("prefills the later onboarding steps from generated suggestions", async () => {
@@ -538,7 +542,7 @@ describe("Onboarding wizard", () => {
 
     await user.type(screen.getByLabelText("Company website"), "acme.com")
     await user.type(screen.getByLabelText("Company name"), "Acme")
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
     expect(await screen.findByDisplayValue("Suggested description")).toBeInTheDocument()
 
@@ -551,18 +555,19 @@ describe("Onboarding wizard", () => {
       })
     )
 
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
-    expect(await screen.findByDisplayValue("Competitor 1")).toBeInTheDocument()
+    const competitorOneMatches = await screen.findAllByText("Competitor 1")
+    expect(competitorOneMatches.length).toBeGreaterThan(0)
     expect(
-      screen.getByDisplayValue("https://competitor-4.com")
-    ).toBeInTheDocument()
+      screen.getAllByText("https://competitor-4.com").length
+    ).toBeGreaterThan(0)
 
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
-    expect(await screen.findByText(/Topic 1: ai search/i)).toBeInTheDocument()
+    expect(await screen.findByText("ai search")).toBeInTheDocument()
     expect(
-      screen.getByDisplayValue(
+      screen.getByText(
         "Which platforms are best for measuring brand visibility across ChatGPT, Gemini, and Perplexity for brand teams?"
       )
     ).toBeInTheDocument()
@@ -583,7 +588,7 @@ describe("Onboarding wizard", () => {
 
     await user.type(screen.getByLabelText("Company website"), "acme.com")
     await user.type(screen.getByLabelText("Company name"), "Acme")
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
     expect(await screen.findByDisplayValue("Suggested description")).toBeInTheDocument()
     expect(logSpy).toHaveBeenCalledWith(
@@ -621,9 +626,11 @@ describe("Onboarding wizard", () => {
 
     await user.type(screen.getByLabelText("Company website"), "acme.com")
     await user.type(screen.getByLabelText("Company name"), "Acme")
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
-    expect(await screen.findByText("Step 2 of 4")).toBeInTheDocument()
+    expect(
+      await screen.findByRole("heading", { name: "Describe what you do" })
+    ).toBeInTheDocument()
     expect(
       screen.getByText(/We found fewer than 3 strong topics\./)
     ).toBeInTheDocument()
@@ -641,9 +648,11 @@ describe("Onboarding wizard", () => {
       screen.getByLabelText("Business description"),
       "Manual description"
     )
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
-    expect(await screen.findByText("Step 3 of 4")).toBeInTheDocument()
+    expect(
+      await screen.findByRole("heading", { name: "Add your competitors" })
+    ).toBeInTheDocument()
     expect(
       screen.getByText(/We found fewer than 3 strong topics\./)
     ).toBeInTheDocument()
@@ -669,9 +678,11 @@ describe("Onboarding wizard", () => {
 
     await user.type(screen.getByLabelText("Company website"), "acme.com")
     await user.type(screen.getByLabelText("Company name"), "Acme")
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
-    expect(await screen.findByText("Step 2 of 4")).toBeInTheDocument()
+    expect(
+      await screen.findByRole("heading", { name: "Describe what you do" })
+    ).toBeInTheDocument()
     expect(
       screen.getByText(/The AI model could not load any topics\./)
     ).toBeInTheDocument()
@@ -715,14 +726,14 @@ describe("Onboarding wizard", () => {
 
     await user.type(screen.getByLabelText("Company website"), "acme.com")
     await user.type(screen.getByLabelText("Company name"), "Acme")
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
     expect(await screen.findByDisplayValue("First suggestion")).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "Back" }))
     await user.clear(screen.getByLabelText("Company website"))
     await user.type(screen.getByLabelText("Company website"), "acme.ai")
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
     expect(await screen.findByDisplayValue("Second suggestion")).toBeInTheDocument()
 
@@ -735,11 +746,13 @@ describe("Onboarding wizard", () => {
       })
     )
 
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
-    expect(await screen.findByDisplayValue("Competitor X")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Continue" }))
+    expect(
+      (await screen.findAllByText("Competitor X")).length
+    ).toBeGreaterThan(0)
 
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
-    expect(await screen.findByText(/Topic 1: llm visibility/i)).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Continue" }))
+    expect(await screen.findByText("llm visibility")).toBeInTheDocument()
   })
 
   it("preserves generated topics and competitors when the brand prop updates mid-onboarding", async () => {
@@ -756,7 +769,7 @@ describe("Onboarding wizard", () => {
 
     await user.type(screen.getByLabelText("Company website"), "acme.com")
     await user.type(screen.getByLabelText("Company name"), "Acme")
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
     expect(await screen.findByDisplayValue("Suggested description")).toBeInTheDocument()
 
@@ -776,10 +789,12 @@ describe("Onboarding wizard", () => {
       />
     )
 
-    expect(await screen.findByDisplayValue("Competitor 1")).toBeInTheDocument()
+    expect((await screen.findAllByText("Competitor 1")).length).toBeGreaterThan(
+      0
+    )
 
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
-    expect(await screen.findByText(/Topic 1: ai search/i)).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Continue" }))
+    expect(await screen.findByText("ai search")).toBeInTheDocument()
   })
 
   it("adds and removes competitor rows, then completes onboarding", async () => {
@@ -796,10 +811,10 @@ describe("Onboarding wizard", () => {
 
     await user.click(screen.getByRole("button", { name: "Add competitor" }))
 
-    const removeButtons = screen.getAllByRole("button", {
-      name: /remove competitor/i,
-    })
-    await user.click(removeButtons[3]!)
+    // The newly added 4th row is in edit mode with empty fields; its Cancel
+    // button removes the row when there's more than one competitor.
+    const cancelButtons = screen.getAllByRole("button", { name: "Cancel" })
+    await user.click(cancelButtons[3]!)
 
     const nameInputs = screen.getAllByLabelText(/Competitor name/i)
     const websiteInputs = screen.getAllByLabelText(/Competitor website/i)
@@ -811,7 +826,7 @@ describe("Onboarding wizard", () => {
     await user.type(nameInputs[2]!, "Competitor 3")
     await user.type(websiteInputs[2]!, "competitor-3.com")
 
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
     expect(await screen.findByRole("button", { name: "Complete setup" })).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Complete setup" }))
 
@@ -879,7 +894,7 @@ describe("Onboarding wizard", () => {
     await user.type(nameInputs[2]!, "Competitor 3")
     await user.type(websiteInputs[2]!, "competitor-3.com")
 
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
     await user.click(screen.getByRole("button", { name: "Complete setup" }))
 
     expect(
@@ -908,7 +923,7 @@ describe("Onboarding wizard", () => {
     await user.type(nameInputs[1]!, "Competitor 2")
     await user.type(websiteInputs[1]!, "competitor-2.com")
 
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
 
     expect(mockFetchOnboardingTopicPrompts).not.toHaveBeenCalled()
     expect(
@@ -938,11 +953,13 @@ describe("Onboarding wizard", () => {
     await user.type(nameInputs[2]!, "Competitor 3")
     await user.type(websiteInputs[2]!, "competitor-3.com")
 
-    await user.click(screen.getByRole("button", { name: "Save and continue" }))
+    await user.click(screen.getByRole("button", { name: "Continue" }))
     await user.click(screen.getByRole("button", { name: "Complete setup" }))
 
     expect(mockCompleteOnboarding).not.toHaveBeenCalled()
-    expect(await screen.findByText("Step 1 of 4")).toBeInTheDocument()
+    expect(
+      await screen.findByRole("heading", { name: "Let's set up your brand" })
+    ).toBeInTheDocument()
     expect(screen.getByText("Enter a valid website")).toBeInTheDocument()
     expect(screen.getByText("Enter a valid company name")).toBeInTheDocument()
   })
