@@ -45,17 +45,17 @@ export function BrandPreview({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 rounded-none border bg-muted/30 px-3 py-2",
+        "flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2",
         className
       )}
     >
-      <Avatar size="sm" className="rounded-none">
+      <Avatar size="sm" className="rounded-md">
         <AvatarImage
-          className="rounded-none object-contain"
+          className="rounded-md object-contain"
           src={preview.logoUrl}
           alt={`${name?.trim() || preview.domain} logo`}
         />
-        <AvatarFallback className="rounded-none text-[10px] font-medium uppercase">
+        <AvatarFallback className="rounded-md text-[10px] font-medium uppercase">
           {fallbackLabel}
         </AvatarFallback>
       </Avatar>
