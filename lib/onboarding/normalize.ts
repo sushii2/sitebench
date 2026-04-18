@@ -1,6 +1,6 @@
-import { Output, generateText } from "ai"
+import { Output, generateText, stepCountIs } from "ai"
 
-import { getLanguageModel } from "@/lib/ai/provider-config"
+import { getGatewayTools, getLanguageModel } from "@/lib/ai/provider-config"
 import { normalizeBrandTopics, normalizeDescription, normalizeWebsite } from "@/lib/brands"
 import {
   onboardingAiSuggestionSchema,
@@ -182,6 +182,14 @@ async function recoverCompetitorsWithWebSearch(input: {
     }),
     system: COMPETITOR_RECOVERY_SYSTEM_PROMPT,
     prompt: createTierTwoPrompt(input),
+    tools: {
+      perplexity_search: getGatewayTools().perplexitySearch({
+        country: "US",
+        maxResults: 5,
+        searchLanguageFilter: ["en"],
+      }),
+    },
+    stopWhen: stepCountIs(3),
   })
 
   return output

@@ -1,6 +1,6 @@
 import Firecrawl from "@mendable/firecrawl-js"
 
-import { normalizeWebsite } from "@/lib/brands"
+import { normalizeWebsite, parsePublicWebsiteUrl } from "@/lib/brands"
 import { getOnboardingConfig } from "@/lib/onboarding/config"
 import {
   onboardingScrapeContextSchema,
@@ -8,6 +8,19 @@ import {
 } from "@/lib/onboarding/types"
 
 const MAX_MARKDOWN_PREVIEW_CHARS = 1500
+
+export interface FirecrawlMappedLink {
+  description?: string | null
+  title?: string | null
+  url: string
+}
+
+export interface FirecrawlCrawlDocument {
+  html: string
+  markdown: string
+  metadata: Record<string, unknown>
+  url: string
+}
 
 let firecrawlClient: Firecrawl | null = null
 
@@ -21,6 +34,110 @@ function getFirecrawlClient() {
   }
 
   return firecrawlClient
+}
+
+function normalizePageUrl(url: string) {
+  const parsed = parsePublicWebsiteUrl(url)
+
+  if (!parsed) {
+    throw new Error("Enter a valid website")
+  }
+
+  parsed.hash = ""
+
+  return parsed.toString()
+}
+
+export async function mapWebsiteUrls(
+  website: string,
+  options?: {
+    search?: string
+  }
+): Promise<FirecrawlMappedLink[]> {
+  const normalizedWebsite = normalizeWebsite(website)
+  const result = await getFirecrawlClient().map(normalizedWebsite, {
+    ignoreQueryParameters: true,
+    location: {
+      country: "US",
+      languages: ["en-US"],
+    },
+    search: options?.search,
+    sitemap: "include",
+  })
+
+  return (result.links ?? [])
+    .map((link) => ({
+      description:
+        typeof link.description === "string" ? link.description : null,
+      title: typeof link.title === "string" ? link.title : null,
+      url: normalizePageUrl(link.url),
+    }))
+    .filter((link) => Boolean(link.url))
+}
+
+export async function startOnboardingCrawl(input: {
+  includePaths: string[]
+  website: string
+}) {
+  const normalizedWebsite = normalizeWebsite(input.website)
+  const job = await getFirecrawlClient().startCrawl(normalizedWebsite, {
+    allowExternalLinks: false,
+    allowSubdomains: false,
+    crawlEntireDomain: true,
+    ignoreQueryParameters: true,
+    includePaths: input.includePaths,
+    limit: Math.max(10, input.includePaths.length * 2),
+    maxConcurrency: 2,
+    maxDiscoveryDepth: 1,
+    regexOnFullURL: false,
+    scrapeOptions: {
+      formats: ["markdown", "html"],
+      onlyMainContent: true,
+    },
+    sitemap: "skip",
+  })
+
+  return job
+}
+
+export async function getOnboardingCrawlStatus(jobId: string) {
+  return getFirecrawlClient().getCrawlStatus(jobId)
+}
+
+export function toFirecrawlDocuments(
+  documents: Array<{
+    html?: string | null
+    markdown?: string | null
+    metadata?: Record<string, unknown> | null
+  }>
+): FirecrawlCrawlDocument[] {
+  return documents.flatMap((document) => {
+    let url: string | null = null
+
+    if (typeof document.metadata?.sourceURL === "string") {
+      try {
+        url = normalizePageUrl(document.metadata.sourceURL)
+      } catch (error) {
+        console.warn("[onboarding] Skipping crawl document with invalid source URL", {
+          error,
+          sourceURL: document.metadata.sourceURL,
+        })
+      }
+    }
+
+    if (!url) {
+      return []
+    }
+
+    return [
+      {
+        html: document.html ?? "",
+        markdown: document.markdown ?? "",
+        metadata: document.metadata ?? {},
+        url,
+      },
+    ]
+  })
 }
 
 export async function scrapeBrandHomepage(

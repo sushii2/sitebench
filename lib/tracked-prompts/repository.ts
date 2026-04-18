@@ -1,6 +1,7 @@
 import type { InsForgeClient } from "@insforge/sdk"
 
 import type { OnboardingPromptDraft } from "@/lib/onboarding/types"
+import { resolvePromptCatalogId } from "@/lib/prompt-catalog/repository"
 import type { TrackedPrompt } from "@/lib/tracked-prompts/types"
 
 type PromptClient = Pick<InsForgeClient, "database">
@@ -72,17 +73,25 @@ export async function syncTrackedPromptsForTopics(
   const existingPrompts = await loadTrackedPromptsByProject(client, input.projectId)
   const desiredTopicIds = new Set(input.topics.map((topic) => topic.topicId))
   const desiredNormalizedByTopic = new Map<string, Set<string>>()
+  const promptCatalogIdByTemplate = new Map<string, string | null>()
 
   for (const topic of input.topics) {
     const dedupedPrompts = dedupePrompts(topic.prompts)
     const normalizedSet = new Set<string>()
 
     for (const prompt of dedupedPrompts) {
-      normalizedSet.add(normalizePromptText(prompt.promptText))
+      const normalizedPrompt = normalizePromptText(prompt.promptText)
+      const promptCatalogId = await resolvePromptCatalogId(
+        client,
+        prompt,
+        promptCatalogIdByTemplate
+      )
+
+      normalizedSet.add(normalizedPrompt)
       const existing = existingPrompts.find(
         (candidate) =>
           candidate.project_topic_id === topic.topicId &&
-          candidate.normalized_prompt === normalizePromptText(prompt.promptText)
+          candidate.normalized_prompt === normalizedPrompt
       )
 
       if (existing) {
@@ -91,7 +100,14 @@ export async function syncTrackedPromptsForTopics(
           .update({
             added_via: prompt.addedVia,
             is_active: true,
+            pqs_rank: prompt.pqsRank ?? null,
+            pqs_score: prompt.pqsScore ?? null,
+            prompt_catalog_id: promptCatalogId,
             prompt_text: normalizeWhitespace(prompt.promptText),
+            score_metadata: prompt.scoreMetadata ?? {},
+            score_status: prompt.scoreStatus ?? "unscored",
+            source_analysis_run_id: prompt.sourceAnalysisRunId ?? null,
+            variant_type: prompt.variantType ?? null,
           })
           .eq("id", existing.id)
           .select("*")
@@ -110,11 +126,17 @@ export async function syncTrackedPromptsForTopics(
             added_via: prompt.addedVia,
             cadence_override: null,
             is_active: true,
-            normalized_prompt: normalizePromptText(prompt.promptText),
+            normalized_prompt: normalizedPrompt,
+            pqs_rank: prompt.pqsRank ?? null,
+            pqs_score: prompt.pqsScore ?? null,
             project_id: input.projectId,
             project_topic_id: topic.topicId,
-            prompt_catalog_id: null,
+            prompt_catalog_id: promptCatalogId,
             prompt_text: normalizeWhitespace(prompt.promptText),
+            score_metadata: prompt.scoreMetadata ?? {},
+            score_status: prompt.scoreStatus ?? "unscored",
+            source_analysis_run_id: prompt.sourceAnalysisRunId ?? null,
+            variant_type: prompt.variantType ?? null,
           },
         ])
         .select("*")

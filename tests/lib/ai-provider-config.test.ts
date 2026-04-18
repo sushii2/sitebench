@@ -101,7 +101,7 @@ describe("provider registry", () => {
           reasoning: false,
           streamingResponse: true,
           structuredOutput: true,
-          webSearch: false,
+          webSearch: true,
         },
         id: "openai/gpt-5.4-mini",
         name: "GPT-5.4 Mini",
@@ -119,9 +119,7 @@ describe("provider registry", () => {
     ])
 
     expect(getDefaultModel("openai")?.id).toBe("openai/gpt-5.4-mini")
-    expect(getDefaultModel("openai", "webSearch")?.id).toBe(
-      "openai/gpt-4o-mini-search-preview"
-    )
+    expect(getDefaultModel("openai", "webSearch")?.id).toBe("openai/gpt-5.4-mini")
     expect(getDefaultModel("anthropic", "webSearch")).toBeNull()
     expect(
       getProviderModels("openai", {
@@ -148,7 +146,7 @@ describe("provider registry", () => {
         capability: "webSearch",
       })
     ).toEqual({
-      modelId: "openai/gpt-4o-mini-search-preview",
+      modelId: "openai/gpt-5.4-mini",
       provider: "gateway",
     })
 
@@ -156,9 +154,6 @@ describe("provider registry", () => {
       apiKey: "gateway-key",
     })
     expect(mockGatewayModel).toHaveBeenCalledWith("openai/gpt-5.4-mini")
-    expect(mockGatewayModel).toHaveBeenCalledWith(
-      "openai/gpt-4o-mini-search-preview"
-    )
 
     expect(() =>
       getLanguageModel("openai", {

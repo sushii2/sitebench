@@ -1,10 +1,14 @@
 import { getInsforgeBrowserClient } from "@/lib/insforge/browser-client"
 import {
+  onboardingAnalysisRequestSchema,
+  onboardingAnalysisStartResponseSchema,
+  onboardingAnalysisStatusResponseSchema,
   completeOnboardingRequestSchema,
   onboardingBrandRequestSchema,
   onboardingBrandResponseSchema,
   onboardingTopicPromptRequestSchema,
   onboardingTopicPromptResponseSchema,
+  type OnboardingAnalysisRequest,
   type CompleteOnboardingRequest,
   type OnboardingBrandRequest,
   type OnboardingTopicPromptRequest,
@@ -47,6 +51,65 @@ export async function fetchOnboardingBrandSuggestions(
   }
 
   return onboardingBrandResponseSchema.parse(data)
+}
+
+export async function startOnboardingAnalysis(input: OnboardingAnalysisRequest) {
+  const payload = onboardingAnalysisRequestSchema.parse(input)
+  const authorization = getAuthorizationHeader()
+
+  if (!authorization) {
+    throw new Error("You must be signed in to analyze onboarding context.")
+  }
+
+  const response = await fetch("/api/onboarding/analysis", {
+    body: JSON.stringify(payload),
+    headers: {
+      Authorization: authorization,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  })
+
+  const data = await response.json().catch(() => null)
+
+  if (!response.ok) {
+    const message =
+      typeof data?.error?.message === "string"
+        ? data.error.message
+        : "Unable to start onboarding analysis."
+
+    throw new Error(message)
+  }
+
+  return onboardingAnalysisStartResponseSchema.parse(data)
+}
+
+export async function pollOnboardingAnalysis(analysisId: string) {
+  const authorization = getAuthorizationHeader()
+
+  if (!authorization) {
+    throw new Error("You must be signed in to load onboarding analysis.")
+  }
+
+  const response = await fetch(`/api/onboarding/analysis/${analysisId}`, {
+    headers: {
+      Authorization: authorization,
+    },
+    method: "GET",
+  })
+
+  const data = await response.json().catch(() => null)
+
+  if (!response.ok) {
+    const message =
+      typeof data?.error?.message === "string"
+        ? data.error.message
+        : "Unable to load onboarding analysis."
+
+    throw new Error(message)
+  }
+
+  return onboardingAnalysisStatusResponseSchema.parse(data)
 }
 
 export async function fetchOnboardingTopicPrompts(

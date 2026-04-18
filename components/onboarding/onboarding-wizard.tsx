@@ -23,10 +23,12 @@ import {
 import { getInsforgeBrowserClient } from "@/lib/insforge/browser-client"
 import {
   completeOnboarding,
-  fetchOnboardingBrandSuggestions,
   fetchOnboardingTopicPrompts,
+  pollOnboardingAnalysis,
+  startOnboardingAnalysis,
 } from "@/lib/onboarding/client"
 import type {
+  OnboardingAnalysisResult,
   OnboardingPromptDraft,
   OnboardingTopicDraft,
 } from "@/lib/onboarding/types"
@@ -91,6 +93,37 @@ type ValidationState = {
   step4?: string
   topicPromptErrors: Record<string, string | undefined>
   topicInput?: string
+}
+
+type AnalysisUiState = "idle" | "starting" | "polling" | "completed" | "failed"
+const ANALYSIS_POLL_INTERVAL_MS = 250
+const ANALYSIS_MAX_POLL_DURATION_MS = 5 * 60 * 1000
+
+const promptVariantOrder: ReadonlyArray<
+  NonNullable<OnboardingPromptDraft["variantType"]>
+> = [
+  "discovery",
+  "comparison",
+  "alternatives",
+  "pricing",
+  "implementation",
+  "use_case",
+  "migration",
+  "roi",
+  "integration",
+  "competitor_specific",
+]
+
+const analysisPhaseLabel: Record<string, string> = {
+  clustering: "Clustering intents into topics",
+  completed: "Analysis complete",
+  crawling: "Crawling high-signal pages",
+  extracting: "Extracting structured page context",
+  failed: "Analysis failed",
+  mapping: "Mapping the website",
+  polling: "Waiting for analysis results",
+  prompting: "Generating prompt variants",
+  scoring: "Ranking prompts for quality",
 }
 
 const stepMeta = [
@@ -204,17 +237,32 @@ function createPromptDraft(
   return {
     addedVia: prompt?.addedVia ?? "user_created",
     id: prompt?.id ?? `prompt-row-${promptSequence}`,
+    pqsRank: prompt?.pqsRank,
+    pqsScore: prompt?.pqsScore,
     promptText: prompt?.promptText ?? "",
+    scoreMetadata: prompt?.scoreMetadata ?? {},
+    scoreStatus:
+      prompt?.scoreStatus ?? (prompt?.pqsScore ? "scored" : "unscored"),
+    sourceAnalysisRunId: prompt?.sourceAnalysisRunId,
+    templateText: prompt?.templateText,
+    variantType: prompt?.variantType,
   }
 }
 
-function createTopicDraft(topic?: Partial<WizardTopicDraft>): WizardTopicDraft {
+function createTopicDraft(
+  topic?: Partial<Omit<WizardTopicDraft, "prompts">> & {
+    prompts?: Array<Partial<WizardPromptDraft>>
+  }
+): WizardTopicDraft {
   topicSequence += 1
 
   return {
+    clusterId: topic?.clusterId,
     id: topic?.id ?? `topic-row-${topicSequence}`,
+    intentSummary: topic?.intentSummary,
     prompts: topic?.prompts?.map((prompt) => createPromptDraft(prompt)) ?? [],
     source: topic?.source ?? "user_added",
+    sourceUrls: topic?.sourceUrls ?? [],
     topicId: topic?.topicId,
     topicName: topic?.topicName ?? "",
   }
@@ -230,6 +278,86 @@ function buildTopicDrafts(
       topicName,
     })
   )
+}
+
+function buildGeneratedTopicDrafts(topics: OnboardingTopicDraft[]) {
+  return topics.map((topic) =>
+    createTopicDraft({
+      clusterId: topic.clusterId,
+      intentSummary: topic.intentSummary,
+      prompts: topic.prompts,
+      source: topic.source,
+      sourceUrls: topic.sourceUrls,
+      topicId: topic.topicId,
+      topicName: topic.topicName,
+    })
+  )
+}
+
+function getPromptStatusRank(prompt: WizardPromptDraft) {
+  switch (prompt.scoreStatus) {
+    case "scored":
+      return 0
+    case "stale":
+      return 1
+    case "unscored":
+    default:
+      return 2
+  }
+}
+
+function getPromptVariantRank(prompt: WizardPromptDraft) {
+  if (!prompt.variantType) {
+    return promptVariantOrder.length
+  }
+
+  const index = promptVariantOrder.indexOf(prompt.variantType)
+
+  return index >= 0 ? index : promptVariantOrder.length
+}
+
+function sortPromptDrafts(prompts: WizardPromptDraft[]) {
+  return [...prompts].sort((left, right) => {
+    const statusDifference =
+      getPromptStatusRank(left) - getPromptStatusRank(right)
+
+    if (statusDifference !== 0) {
+      return statusDifference
+    }
+
+    const scoreDifference = (right.pqsScore ?? -1) - (left.pqsScore ?? -1)
+
+    if (scoreDifference !== 0) {
+      return scoreDifference
+    }
+
+    const variantDifference = getPromptVariantRank(left) - getPromptVariantRank(right)
+
+    if (variantDifference !== 0) {
+      return variantDifference
+    }
+
+    const lengthDifference = left.promptText.length - right.promptText.length
+
+    if (lengthDifference !== 0) {
+      return lengthDifference
+    }
+
+    return left.promptText.localeCompare(right.promptText)
+  })
+}
+
+function sortTopicDraft(topic: WizardTopicDraft): WizardTopicDraft {
+  return {
+    ...topic,
+    prompts: sortPromptDrafts(topic.prompts),
+  }
+}
+
+function formatWarnings(warnings: string[]) {
+  const deduped = [...new Set(warnings.map((warning) => warning.trim()).filter(Boolean))]
+
+  return deduped.length > 0 ? deduped.join(" ") : null
 }
 
 function hasPopulatedCompetitorRows(rows: WizardCompetitor[]) {
@@ -278,6 +406,9 @@ export function OnboardingWizard({
   const [competitors, setCompetitors] = React.useState<WizardCompetitor[]>(() =>
     getInitialCompetitors(brand)
   )
+  const [analysisId, setAnalysisId] = React.useState<string | null>(null)
+  const [analysisState, setAnalysisState] = React.useState<AnalysisUiState>("idle")
+  const [analysisPhase, setAnalysisPhase] = React.useState<string | null>(null)
   const [currentStep, setCurrentStep] = React.useState<StepKey>(() =>
     getInitialStep(brand)
   )
@@ -288,7 +419,6 @@ export function OnboardingWizard({
   const [isSaving, setIsSaving] = React.useState(false)
   const [isGeneratingTopicPrompts, setIsGeneratingTopicPrompts] =
     React.useState(false)
-  const [isPrefillingStepOne, setIsPrefillingStepOne] = React.useState(false)
   const [prefillNotice, setPrefillNotice] = React.useState<string | null>(null)
   const [submitError, setSubmitError] = React.useState<string | null>(null)
   const [editingTopicId, setEditingTopicId] = React.useState<string | null>(null)
@@ -297,6 +427,8 @@ export function OnboardingWizard({
     ReadonlySet<string>
   >(() => new Set<string>())
   const didSeedEditingRef = React.useRef(false)
+  const analysisPollCountRef = React.useRef(0)
+  const analysisPollingStartedAtRef = React.useRef<number | null>(null)
 
   if (!didSeedEditingRef.current) {
     didSeedEditingRef.current = true
@@ -359,6 +491,176 @@ export function OnboardingWizard({
       current > initialState.currentStep ? current : initialState.currentStep
     )
   }, [brand])
+
+  function resetAnalysisProgress() {
+    analysisPollCountRef.current = 0
+    analysisPollingStartedAtRef.current = null
+    setAnalysisId(null)
+    setAnalysisPhase(null)
+    setAnalysisState("idle")
+  }
+
+  const applyAnalysisResult = React.useCallback(
+    (result: OnboardingAnalysisResult) => {
+      const nextWarnings = [...result.warnings]
+
+      if (result.topics.length === 0) {
+        nextWarnings.push(
+          "The analysis could not load any topics. Review this step manually."
+        )
+      }
+
+      if (result.competitors.length === 0) {
+        nextWarnings.push(
+          "The analysis could not load any competitors. Review this step manually."
+        )
+      }
+
+      console.log("[onboarding] Applying generated suggestions to wizard", {
+        competitorCount: result.competitors.length,
+        descriptionLength: result.description.length,
+        topics: result.topics.map((topic) => topic.topicName),
+        warnings: result.warnings,
+      })
+
+      setDescription(result.description)
+      setTopics(buildGeneratedTopicDrafts(result.topics).map(sortTopicDraft))
+      const nextCompetitors = buildCompetitorRows(result.competitors)
+      setCompetitors(nextCompetitors)
+      setEditingCompetitorIds(
+        new Set(
+          nextCompetitors
+            .filter((row) => !row.name.trim() && !row.website.trim())
+            .map((row) => row.id)
+        )
+      )
+      setPrefillNotice(formatWarnings(nextWarnings))
+      setAnalysisState("completed")
+      setAnalysisPhase("completed")
+      setCurrentStep(2)
+    },
+    []
+  )
+
+  const ensureAnalysisRunId = React.useCallback(async () => {
+    if (analysisId) {
+      return analysisId
+    }
+
+    if (!projectId) {
+      throw new Error("Project ID is required before generating prompts.")
+    }
+
+    const started = await startOnboardingAnalysis({
+      companyName,
+      projectId,
+      website,
+    })
+
+    setAnalysisId(started.analysisId)
+    setAnalysisPhase(started.status)
+
+    return started.analysisId
+  }, [analysisId, companyName, projectId, website])
+
+  React.useEffect(() => {
+    if (analysisState !== "polling" || !analysisId) {
+      return
+    }
+
+    if (analysisPollingStartedAtRef.current === null) {
+      analysisPollingStartedAtRef.current = Date.now()
+    }
+
+    let isCancelled = false
+    let timeoutId: number | null = null
+
+    const schedulePoll = (delayMs: number) => {
+      timeoutId = window.setTimeout(async () => {
+        if (isCancelled) {
+          return
+        }
+
+        let shouldScheduleNextPoll = false
+
+        try {
+          analysisPollCountRef.current += 1
+
+          const startedAt = analysisPollingStartedAtRef.current ?? Date.now()
+          const elapsedMs = Date.now() - startedAt
+
+          if (elapsedMs > ANALYSIS_MAX_POLL_DURATION_MS) {
+            setAnalysisState("failed")
+            setAnalysisPhase("failed")
+            setPrefillNotice(
+              "Analysis timed out before the crawl finished. Continue manually."
+            )
+            return
+          }
+
+          const result = await pollOnboardingAnalysis(analysisId)
+
+          if (isCancelled) {
+            return
+          }
+
+          setAnalysisPhase(result.status)
+
+          if (result.status === "completed" && result.result) {
+            applyAnalysisResult(result.result)
+            return
+          }
+
+          if (result.status === "completed" && !result.result) {
+            setAnalysisState("failed")
+            setAnalysisPhase("failed")
+            setPrefillNotice(
+              "Analysis completed without usable results. Continue manually."
+            )
+            return
+          }
+
+          if (result.status === "failed") {
+            setAnalysisState("failed")
+            setAnalysisPhase("failed")
+            setPrefillNotice(
+              formatWarnings(result.warnings) ??
+                "We could not analyze the site. Continue manually."
+            )
+            return
+          }
+
+          setPrefillNotice(formatWarnings(result.warnings))
+          shouldScheduleNextPoll = true
+        } catch (error) {
+          if (isCancelled) {
+            return
+          }
+
+          setAnalysisState("failed")
+          setAnalysisPhase("failed")
+          setPrefillNotice(
+            error instanceof Error
+              ? error.message
+              : "We could not analyze the site. Continue manually."
+          )
+        }
+
+        if (!isCancelled && shouldScheduleNextPoll) {
+          schedulePoll(ANALYSIS_POLL_INTERVAL_MS)
+        }
+      }, delayMs)
+    }
+
+    schedulePoll(ANALYSIS_POLL_INTERVAL_MS)
+
+    return () => {
+      isCancelled = true
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [analysisId, analysisState, applyAnalysisResult])
 
   function clearValidation() {
     setValidation({
@@ -727,8 +1029,10 @@ export function OnboardingWizard({
             name: competitor.name.trim(),
             website: competitor.website.trim(),
           }))
+        const activeAnalysisId = await ensureAnalysisRunId()
 
         const result = await fetchOnboardingTopicPrompts({
+          analysisRunId: activeAnalysisId,
           companyName,
           competitors: populatedCompetitors,
           description,
@@ -749,15 +1053,15 @@ export function OnboardingWizard({
               return topic
             }
 
-            return {
+            return sortTopicDraft({
               ...topic,
+              clusterId: generatedTopic.clusterId,
+              intentSummary: generatedTopic.intentSummary,
               prompts: generatedTopic.prompts.map((prompt) =>
-                createPromptDraft({
-                  addedVia: prompt.addedVia,
-                  promptText: prompt.promptText,
-                })
+                createPromptDraft(prompt)
               ),
-            }
+              sourceUrls: generatedTopic.sourceUrls ?? topic.sourceUrls,
+            })
           })
         )
       } catch (error) {
@@ -770,7 +1074,7 @@ export function OnboardingWizard({
         setIsGeneratingTopicPrompts(false)
       }
     },
-    [companyName, competitors, description, website]
+    [companyName, competitors, description, ensureAnalysisRunId, website]
   )
 
   React.useEffect(() => {
@@ -808,16 +1112,17 @@ export function OnboardingWizard({
       setTopics((current) =>
         current.map((topic) =>
           topic.id === topicId
-            ? {
+            ? sortTopicDraft({
                 ...topic,
                 prompts: [
                   ...topic.prompts,
                   createPromptDraft({
                     addedVia: "user_created",
                     promptText: value,
+                    scoreStatus: "unscored",
                   }),
                 ],
-              }
+              })
             : topic
         )
       )
@@ -825,14 +1130,22 @@ export function OnboardingWizard({
       setTopics((current) =>
         current.map((topic) =>
           topic.id === topicId
-            ? {
+            ? sortTopicDraft({
                 ...topic,
                 prompts: topic.prompts.map((prompt) =>
                   prompt.id === promptId
-                    ? { ...prompt, promptText: value }
+                    ? {
+                        ...prompt,
+                        addedVia: "user_created",
+                        pqsRank: undefined,
+                        pqsScore: undefined,
+                        promptText: value,
+                        scoreStatus: "stale",
+                        templateText: undefined,
+                      }
                     : prompt
                 ),
-              }
+              })
             : topic
         )
       )
@@ -852,19 +1165,31 @@ export function OnboardingWizard({
     setTopics((current) =>
       current.map((topic) =>
         topic.id === topicId
-          ? {
+          ? sortTopicDraft({
               ...topic,
               prompts: topic.prompts.filter(
                 (prompt) => prompt.id !== promptId
               ),
-            }
+            })
           : topic
       )
     )
   }
 
   async function handleNext() {
-    if (isSaving) {
+    if (isSaving || analysisState === "starting" || analysisState === "polling") {
+      return
+    }
+
+    if (currentStep === 1 && analysisState === "completed") {
+      clearValidation()
+      setCurrentStep(2)
+      return
+    }
+
+    if (currentStep === 1 && analysisState === "failed") {
+      clearValidation()
+      setCurrentStep(2)
       return
     }
 
@@ -881,74 +1206,46 @@ export function OnboardingWizard({
     }
 
     setIsSaving(true)
-    if (currentStep === 1) {
-      setPrefillNotice(null)
-    }
     setSubmitError(null)
 
     try {
       if (currentStep === 1) {
+        setPrefillNotice(null)
         const nextBrand = await saveBrandDraftStep(client, {
           company_name: companyName,
           website,
         })
 
         setProjectId(nextBrand.id)
-        setIsPrefillingStepOne(true)
+        analysisPollCountRef.current = 0
+        analysisPollingStartedAtRef.current = Date.now()
+        setAnalysisState("starting")
+        setAnalysisPhase("mapping")
 
         try {
-          const suggestion = await fetchOnboardingBrandSuggestions({
+          const started = await startOnboardingAnalysis({
             companyName,
+            projectId: nextBrand.id,
             website,
           })
 
-          const nextWarnings = [...suggestion.warnings]
-
-          if (suggestion.topics.length === 0) {
-            nextWarnings.push(
-              "The AI model could not load any topics. Review this step manually."
-            )
-          }
-
-          if (suggestion.competitors.length === 0) {
-            nextWarnings.push(
-              "The AI model could not load any competitors. Review this step manually."
-            )
-          }
-
-          console.log("[onboarding] Applying generated suggestions to wizard", {
-            competitorCount: suggestion.competitors.length,
-            descriptionLength: suggestion.description.length,
-            topics: suggestion.topics,
-            warnings: suggestion.warnings,
-          })
-
-          setDescription(suggestion.description)
-          setTopics(buildTopicDrafts(suggestion.topics, "ai_suggested"))
-          const nextCompetitors = buildCompetitorRows(suggestion.competitors)
-          setCompetitors(nextCompetitors)
-          setEditingCompetitorIds(
-            new Set(
-              nextCompetitors
-                .filter((row) => !row.name.trim() && !row.website.trim())
-                .map((row) => row.id)
-            )
+          setAnalysisId(started.analysisId)
+          setAnalysisPhase(started.status)
+          setAnalysisState(
+            started.status === "completed" ? "completed" : "polling"
           )
-
-          if (nextWarnings.length) {
-            setPrefillNotice([...new Set(nextWarnings)].join(" "))
-          }
+          setPrefillNotice(formatWarnings(started.warnings))
         } catch (error) {
+          setAnalysisState("failed")
+          setAnalysisPhase("failed")
           setPrefillNotice(
             error instanceof Error
               ? error.message
-              : "We could not prefill the next steps. Continue manually."
+              : "We could not analyze the site. Continue manually."
           )
-        } finally {
-          setIsPrefillingStepOne(false)
         }
 
-        setCurrentStep(2)
+        return
       }
 
       if (currentStep === 2) {
@@ -1018,11 +1315,21 @@ export function OnboardingWizard({
         description,
         projectId,
         topics: topics.map((topic) => ({
+          clusterId: topic.clusterId,
+          intentSummary: topic.intentSummary,
           prompts: topic.prompts.map((prompt) => ({
             addedVia: prompt.addedVia,
+            pqsRank: prompt.pqsRank,
+            pqsScore: prompt.pqsScore,
             promptText: prompt.promptText,
+            scoreMetadata: prompt.scoreMetadata,
+            scoreStatus: prompt.scoreStatus,
+            sourceAnalysisRunId: prompt.sourceAnalysisRunId,
+            templateText: prompt.templateText,
+            variantType: prompt.variantType,
           })),
           source: topic.source,
+          sourceUrls: topic.sourceUrls,
           topicName: topic.topicName,
         })),
         website,
@@ -1050,10 +1357,16 @@ export function OnboardingWizard({
     return set
   }, [currentStep])
 
-  const primaryLabel = currentStep === 4 ? "Complete setup" : "Continue"
+  const primaryLabel =
+    currentStep === 1 && analysisState === "failed"
+      ? "Continue manually"
+      : currentStep === 4
+        ? "Complete setup"
+        : "Continue"
   const primaryLoadingLabel =
-    currentStep === 1 && isPrefillingStepOne
-      ? "Analyzing your homepage…"
+    currentStep === 1 &&
+    (analysisState === "starting" || analysisState === "polling")
+      ? "Analyzing your site…"
       : currentStep === 3 && isGeneratingTopicPrompts
         ? "Generating prompts…"
         : currentStep === 4
@@ -1112,6 +1425,10 @@ export function OnboardingWizard({
                     placeholder="example.com"
                     value={website}
                     onChange={(event) => {
+                      if (currentStep === 1) {
+                        resetAnalysisProgress()
+                        setPrefillNotice(null)
+                      }
                       setWebsite(event.target.value)
                       setValidation((current) => ({
                         ...current,
@@ -1139,6 +1456,10 @@ export function OnboardingWizard({
                     placeholder="Acme"
                     value={companyName}
                     onChange={(event) => {
+                      if (currentStep === 1) {
+                        resetAnalysisProgress()
+                        setPrefillNotice(null)
+                      }
                       setCompanyName(event.target.value)
                       setValidation((current) => ({
                         ...current,
@@ -1154,25 +1475,42 @@ export function OnboardingWizard({
                   ) : null}
                 </Field>
 
-                {isPrefillingStepOne ? (
+                {analysisState !== "idle" ? (
                   <div className="rounded-md border border-dashed border-border bg-muted/30 p-4">
                     <div className="flex items-center gap-3">
-                      <Spinner className="size-4" />
+                      {analysisState === "starting" ||
+                      analysisState === "polling" ? (
+                        <Spinner className="size-4" />
+                      ) : (
+                        <div className="size-2 rounded-full bg-amber-500" />
+                      )}
                       <div className="space-y-0.5">
                         <div className="text-sm font-medium">
-                          Analyzing your homepage
+                          {analysisState === "failed"
+                            ? "Website analysis needs manual review"
+                            : analysisState === "completed"
+                              ? "Website analysis is ready"
+                              : "Analyzing your website context"}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          Preparing a suggested description, topics, and
-                          competitors.
+                          {analysisState === "failed"
+                            ? "We could not finish the crawl and scoring flow. You can continue manually from the next step."
+                            : analysisState === "completed"
+                              ? "Your description, competitors, topics, and prompt variants are ready to review."
+                              : analysisPhase
+                                ? analysisPhaseLabel[analysisPhase] ??
+                                  "Preparing suggested description, topics, competitors, and prompts."
+                                : "Preparing suggested description, topics, competitors, and prompts."}
                         </div>
                       </div>
                     </div>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <Skeleton className="h-20 w-full" />
-                      <Skeleton className="h-20 w-full" />
-                      <Skeleton className="h-28 w-full md:col-span-2" />
-                    </div>
+                    {analysisState === "starting" || analysisState === "polling" ? (
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <Skeleton className="h-20 w-full" />
+                        <Skeleton className="h-20 w-full" />
+                        <Skeleton className="h-28 w-full md:col-span-2" />
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </FieldGroup>
@@ -1698,10 +2036,18 @@ export function OnboardingWizard({
               onClick={() => {
                 void (currentStep === 4 ? handleComplete() : handleNext())
               }}
-              disabled={isSaving || isGeneratingTopicPrompts}
+              disabled={
+                isSaving ||
+                isGeneratingTopicPrompts ||
+                analysisState === "starting" ||
+                analysisState === "polling"
+              }
               className={cn("min-w-44", "justify-center")}
             >
-              {isSaving || isGeneratingTopicPrompts ? (
+              {isSaving ||
+              isGeneratingTopicPrompts ||
+              analysisState === "starting" ||
+              analysisState === "polling" ? (
                 <>
                   <Spinner className={cn("size-4", "text-primary-foreground")} />
                   {primaryLoadingLabel}
