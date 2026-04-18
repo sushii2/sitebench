@@ -56,3 +56,46 @@ describe("scrapeBrandHomepage", () => {
     logSpy.mockRestore()
   })
 })
+
+describe("toFirecrawlDocuments", () => {
+  it("skips documents with invalid source URLs instead of throwing", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const { toFirecrawlDocuments } = await loadFirecrawlModule()
+
+    const result = toFirecrawlDocuments([
+      {
+        html: "<p>Broken</p>",
+        markdown: "Broken",
+        metadata: {
+          sourceURL: "::::",
+        },
+      },
+      {
+        html: "<p>Valid</p>",
+        markdown: "Valid",
+        metadata: {
+          sourceURL: "https://acme.com/pricing",
+        },
+      },
+    ])
+
+    expect(result).toEqual([
+      {
+        html: "<p>Valid</p>",
+        markdown: "Valid",
+        metadata: {
+          sourceURL: "https://acme.com/pricing",
+        },
+        url: "https://acme.com/pricing",
+      },
+    ])
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[onboarding] Skipping crawl document with invalid source URL",
+      expect.objectContaining({
+        sourceURL: "::::",
+      })
+    )
+
+    warnSpy.mockRestore()
+  })
+})

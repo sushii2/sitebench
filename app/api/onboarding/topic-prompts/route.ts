@@ -35,11 +35,12 @@ export async function POST(request: Request) {
   }
 
   console.log("[onboarding] Generating topic prompt drafts", {
+    analysisRunId: parsed.data.analysisRunId,
     topicCount: parsed.data.topics.length,
     userId: user.id,
   })
 
-  const result = generateTopicPromptCollection(parsed.data)
+  const result = await generateTopicPromptCollection(parsed.data)
 
   return NextResponse.json(result)
 }

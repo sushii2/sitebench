@@ -33,13 +33,33 @@ describe("POST /api/onboarding/topic-prompts", () => {
       topics: [
         {
           prompts: [
-            { addedVia: "ai_suggested", promptText: "Best AI search tools" },
             {
               addedVia: "ai_suggested",
+              pqsRank: 1,
+              pqsScore: 94,
+              promptText: "Best AI search tools",
+              scoreMetadata: { topicFit: 30 },
+              scoreStatus: "scored",
+              sourceAnalysisRunId: "analysis-1",
+              templateText: "Best {topic} tools",
+              variantType: "discovery",
+            },
+            {
+              addedVia: "ai_suggested",
+              pqsRank: 2,
+              pqsScore: 91,
               promptText: "How does Acme compare to OpenAI for AI search?",
+              scoreMetadata: { topicFit: 29 },
+              scoreStatus: "scored",
+              sourceAnalysisRunId: "analysis-1",
+              templateText: "How does {company} compare to {competitor_list}?",
+              variantType: "comparison",
             },
           ],
+          clusterId: "cluster-1",
+          intentSummary: "Buyer evaluation of AI search software",
           source: "ai_suggested",
+          sourceUrls: ["https://acme.com/compare/openai"],
           topicName: "ai search",
         },
       ],
@@ -54,6 +74,7 @@ describe("POST /api/onboarding/topic-prompts", () => {
     const response = await POST(
       new Request("http://localhost/api/onboarding/topic-prompts", {
         body: JSON.stringify({
+          analysisRunId: "analysis-1",
           companyName: "Acme",
           competitors: [],
           description: "Description",
@@ -72,6 +93,7 @@ describe("POST /api/onboarding/topic-prompts", () => {
     const response = await POST(
       new Request("http://localhost/api/onboarding/topic-prompts", {
         body: JSON.stringify({
+          analysisRunId: "analysis-1",
           companyName: "Acme",
           competitors: [
             { name: "OpenAI", website: "https://openai.com" },
@@ -93,13 +115,33 @@ describe("POST /api/onboarding/topic-prompts", () => {
       topics: [
         {
           prompts: [
-            { addedVia: "ai_suggested", promptText: "Best AI search tools" },
             {
               addedVia: "ai_suggested",
+              pqsRank: 1,
+              pqsScore: 94,
+              promptText: "Best AI search tools",
+              scoreMetadata: { topicFit: 30 },
+              scoreStatus: "scored",
+              sourceAnalysisRunId: "analysis-1",
+              templateText: "Best {topic} tools",
+              variantType: "discovery",
+            },
+            {
+              addedVia: "ai_suggested",
+              pqsRank: 2,
+              pqsScore: 91,
               promptText: "How does Acme compare to OpenAI for AI search?",
+              scoreMetadata: { topicFit: 29 },
+              scoreStatus: "scored",
+              sourceAnalysisRunId: "analysis-1",
+              templateText: "How does {company} compare to {competitor_list}?",
+              variantType: "comparison",
             },
           ],
+          clusterId: "cluster-1",
+          intentSummary: "Buyer evaluation of AI search software",
           source: "ai_suggested",
+          sourceUrls: ["https://acme.com/compare/openai"],
           topicName: "ai search",
         },
       ],

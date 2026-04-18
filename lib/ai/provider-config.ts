@@ -43,6 +43,7 @@ export interface GetLanguageModelOptions {
 
 type GatewayProviderInstance = ReturnType<typeof createGateway>
 type GatewayLanguageModel = ReturnType<GatewayProviderInstance>
+type GatewayEmbeddingModel = ReturnType<GatewayProviderInstance["embeddingModel"]>
 
 type ProviderRegistryEntry = ProviderConfig & {
   capabilityDefaultModelIds: Partial<Record<ProviderCapability, string>>
@@ -98,7 +99,7 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderRegistryEntry> = {
     capabilityDefaultModelIds: {
       streamingResponse: "openai/gpt-5.4-mini",
       structuredOutput: "openai/gpt-5.4-mini",
-      webSearch: "openai/gpt-4o-mini-search-preview",
+      webSearch: "openai/gpt-5.4-mini",
     },
     defaultModelId: "openai/gpt-5.4-mini",
     id: "openai",
@@ -108,6 +109,7 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderRegistryEntry> = {
         capabilities: createCapabilityMap({
           streamingResponse: true,
           structuredOutput: true,
+          webSearch: true,
         }),
         id: "openai/gpt-5.4-mini",
         name: "GPT-5.4 Mini",
@@ -330,4 +332,20 @@ export function getLanguageModel(
   }
 
   return getGatewayProvider()(selectedModel.id)
+}
+
+export function getEmbeddingModel(modelId = "openai/text-embedding-3-small") {
+  const provider = getGatewayProvider() as GatewayProviderInstance & {
+    embeddingModel?: (id: string) => GatewayEmbeddingModel
+  }
+
+  if (!provider.embeddingModel) {
+    throw new Error("The AI gateway provider does not support embeddings.")
+  }
+
+  return provider.embeddingModel(modelId)
+}
+
+export function getGatewayTools() {
+  return getGatewayProvider().tools
 }

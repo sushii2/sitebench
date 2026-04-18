@@ -5,6 +5,7 @@
 - Canonical company identity lives in `brand_entities`, with one `primary` brand and zero or more `competitor` brands per project.
 - User-managed onboarding topics live in `project_topics`.
 - Prompt research uses a global `prompt_catalog` plus project-scoped `tracked_prompts`.
+- Onboarding site analysis persists async crawl runs in `site_crawl_runs` and normalized page snapshots in `site_crawl_pages`.
 - Execution is stored at three grains: `prompt_runs`, `prompt_run_responses`, and parsed facts such as `response_brand_metrics` and `response_citations`.
 - Dashboard reads should prefer the `vw_*` views over ad hoc joins.
 
@@ -41,6 +42,15 @@
 ### `tracked_prompts`
 - Prompts that a specific project has chosen to track under one topic.
 - Supports both catalog-backed prompts and fully custom prompts.
+- Stores prompt variant type, PQS ranking, score metadata, and optional linkage back to the onboarding analysis run that produced the prompt.
+
+### `site_crawl_runs`
+- Async onboarding crawl job state for one project.
+- Stores the Firecrawl job ids, current orchestration status, warnings, and the normalized onboarding result payload.
+
+### `site_crawl_pages`
+- Normalized subset of high-signal marketing pages selected during onboarding.
+- Stores page classification, compact content snapshots, extracted entities/intents, and competitor candidates without retaining full raw HTML.
 
 ### `prompt_runs`
 - One logical execution of one tracked prompt for one project/topic at one scheduled moment.
@@ -72,6 +82,8 @@ auth.users
     -> brand_entities
     -> project_topics
     -> project_platforms
+    -> site_crawl_runs
+      -> site_crawl_pages
     -> tracked_prompts
       -> prompt_runs
         -> prompt_run_responses
@@ -103,6 +115,8 @@ Do not collapse those grains into a single table. Multi-provider comparisons, pa
   - `brand_entities`
   - `project_topics`
   - `project_platforms`
+  - `site_crawl_runs`
+  - `site_crawl_pages`
   - `tracked_prompts`
 - Authenticated read-only catalogs:
   - `topic_catalog`
@@ -138,6 +152,7 @@ This keeps onboarding and the mocked dashboard usable while the rest of the UI i
 ## Future Migration Notes
 - Legacy bootstrap/backfill lives in `db/migrations/0002_backfill_legacy_brand_data.sql`.
 - Legacy table removal lives in `db/migrations/0003_drop_legacy_brand_tables.sql`.
+- Async onboarding crawl persistence lives in `db/migrations/0004_onboarding_site_analysis.sql`.
 - Add prompt selection and cadence management UI against `tracked_prompts`.
 - Add platform enablement UI against `project_platforms`.
 - Move dashboard widgets from mock data to `vw_*` queries.

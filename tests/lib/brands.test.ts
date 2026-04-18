@@ -739,10 +739,23 @@ describe("brand helpers", () => {
       process.cwd(),
       "db/migrations/0003_drop_legacy_brand_tables.sql"
     )
+    const onboardingAnalysisMigrationPath = resolve(
+      process.cwd(),
+      "db/migrations/0004_onboarding_site_analysis.sql"
+    )
     const dropMigration = readFileSync(dropMigrationPath, "utf8")
+    const onboardingAnalysisMigration = readFileSync(
+      onboardingAnalysisMigrationPath,
+      "utf8"
+    )
 
     expect(dropMigration).toContain("DROP TABLE IF EXISTS brand_competitors")
     expect(dropMigration).toContain("DROP TABLE IF EXISTS brands")
+    expect(onboardingAnalysisMigration).toContain("CREATE TABLE site_crawl_runs")
+    expect(onboardingAnalysisMigration).toContain("CREATE TABLE site_crawl_pages")
+    expect(onboardingAnalysisMigration).toContain(
+      "ADD COLUMN IF NOT EXISTS variant_type"
+    )
 
     for (const filePath of [
       "lib/tracking-projects/types.ts",
@@ -753,6 +766,8 @@ describe("brand helpers", () => {
       "lib/prompt-catalog/types.ts",
       "lib/prompt-market-metrics/types.ts",
       "lib/tracked-prompts/types.ts",
+      "lib/site-crawl-runs/types.ts",
+      "lib/site-crawl-pages/types.ts",
       "lib/prompt-runs/types.ts",
       "lib/prompt-run-responses/types.ts",
       "lib/response-brand-metrics/types.ts",

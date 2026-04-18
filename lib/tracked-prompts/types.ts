@@ -4,6 +4,20 @@ export type TrackedPromptAddedVia =
   | "ai_suggested"
   | "system_seeded"
 
+export type TrackedPromptVariantType =
+  | "discovery"
+  | "comparison"
+  | "alternatives"
+  | "pricing"
+  | "implementation"
+  | "use_case"
+  | "migration"
+  | "roi"
+  | "integration"
+  | "competitor_specific"
+
+export type TrackedPromptScoreStatus = "scored" | "stale" | "unscored"
+
 export interface TrackedPrompt {
   id: string
   project_id: string
@@ -13,6 +27,12 @@ export interface TrackedPrompt {
   normalized_prompt: string
   cadence_override: "daily" | "weekly" | "monthly" | null
   added_via: TrackedPromptAddedVia
+  variant_type: TrackedPromptVariantType | null
+  pqs_score: number | null
+  pqs_rank: number | null
+  score_status: TrackedPromptScoreStatus
+  score_metadata: Record<string, unknown>
+  source_analysis_run_id: string | null
   is_active: boolean
   next_run_at: string | null
   last_run_at: string | null

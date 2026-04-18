@@ -11,7 +11,8 @@ const mockRefreshAuthState = vi.fn()
 const mockSaveBrandDraftStep = vi.fn()
 const mockFetchOnboardingTopicPrompts = vi.fn()
 const mockCompleteOnboarding = vi.fn()
-const mockFetchOnboardingBrandSuggestions = vi.fn()
+const mockStartOnboardingAnalysis = vi.fn()
+const mockPollOnboardingAnalysis = vi.fn()
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -32,8 +33,9 @@ vi.mock("@/lib/insforge/browser-client", () => ({
 
 vi.mock("@/lib/onboarding/client", () => ({
   completeOnboarding: mockCompleteOnboarding,
-  fetchOnboardingBrandSuggestions: mockFetchOnboardingBrandSuggestions,
   fetchOnboardingTopicPrompts: mockFetchOnboardingTopicPrompts,
+  pollOnboardingAnalysis: mockPollOnboardingAnalysis,
+  startOnboardingAnalysis: mockStartOnboardingAnalysis,
 }))
 
 vi.mock("@/lib/brands", async () => {
@@ -74,6 +76,155 @@ function makeBrand(
     updated_at: "2026-01-01T00:00:00.000Z",
     user_id: "user-1",
     website: "https://acme.com",
+    ...overrides,
+  }
+}
+
+function makeAnalysisResult(
+  overrides: Partial<{
+    competitors: Array<{ name: string; website: string }>
+    description: string
+    topics: Array<{
+      clusterId: string
+      intentSummary: string
+      prompts: Array<{
+        addedVia: "ai_suggested" | "user_created"
+        pqsRank?: number
+        pqsScore?: number
+        promptText: string
+        scoreMetadata?: Record<string, number>
+        scoreStatus?: "scored" | "stale" | "unscored"
+        sourceAnalysisRunId?: string
+        templateText?: string
+        variantType?:
+          | "discovery"
+          | "comparison"
+          | "alternatives"
+          | "pricing"
+          | "implementation"
+          | "competitor_specific"
+      }>
+      source: "ai_suggested" | "user_added" | "system_seeded"
+      sourceUrls: string[]
+      topicName: string
+    }>
+    warnings: string[]
+  }> = {}
+) {
+  return {
+    competitors: [
+      { name: "Competitor 1", website: "https://competitor-1.com" },
+      { name: "Competitor 2", website: "https://competitor-2.com" },
+      { name: "Competitor 3", website: "https://competitor-3.com" },
+      { name: "Competitor 4", website: "https://competitor-4.com" },
+    ],
+    description: "Suggested description",
+    topics: [
+      {
+        clusterId: "cluster-1",
+        intentSummary: "Buyer discovery for AI search",
+        prompts: [
+          {
+            addedVia: "ai_suggested",
+            pqsRank: 1,
+            pqsScore: 94,
+            promptText:
+              "Which platforms are best for measuring brand visibility across ChatGPT, Gemini, and Perplexity for brand teams?",
+            scoreMetadata: { topicFit: 30 },
+            scoreStatus: "scored",
+            sourceAnalysisRunId: "analysis-1",
+            templateText: "Which platforms are best for {topic}?",
+            variantType: "discovery",
+          },
+          {
+            addedVia: "ai_suggested",
+            pqsRank: 2,
+            pqsScore: 91,
+            promptText:
+              "For brand teams evaluating AI visibility platforms, how does Acme compare with Competitor 1 and Competitor 2 on coverage across AI answers, citation tracking, and executive reporting?",
+            scoreMetadata: { topicFit: 29 },
+            scoreStatus: "scored",
+            sourceAnalysisRunId: "analysis-1",
+            templateText:
+              "How does {company} compare with {competitor_list} on {topic}?",
+            variantType: "comparison",
+          },
+        ],
+        source: "ai_suggested",
+        sourceUrls: ["https://acme.com/compare/openai"],
+        topicName: "ai search",
+      },
+      {
+        clusterId: "cluster-2",
+        intentSummary: "Evaluation of Google AI Mode workflows",
+        prompts: [
+          {
+            addedVia: "ai_suggested",
+            pqsRank: 1,
+            pqsScore: 93,
+            promptText:
+              "What platforms help brand teams with measuring brand visibility across Google AI Mode, ChatGPT, and Gemini?",
+            scoreMetadata: { topicFit: 30 },
+            scoreStatus: "scored",
+            sourceAnalysisRunId: "analysis-1",
+            templateText: "What platforms help with {topic}?",
+            variantType: "discovery",
+          },
+          {
+            addedVia: "ai_suggested",
+            pqsRank: 2,
+            pqsScore: 90,
+            promptText:
+              "How does Acme stack up against Competitor 1 and Competitor 2 for coverage across AI answers, citation tracking, and executive reporting?",
+            scoreMetadata: { topicFit: 29 },
+            scoreStatus: "scored",
+            sourceAnalysisRunId: "analysis-1",
+            templateText:
+              "How does {company} stack up against {competitor_list} for {topic}?",
+            variantType: "comparison",
+          },
+        ],
+        source: "ai_suggested",
+        sourceUrls: ["https://acme.com/blog/google-ai-mode"],
+        topicName: "google ai mode",
+      },
+      {
+        clusterId: "cluster-3",
+        intentSummary: "Perplexity evaluation and alternatives research",
+        prompts: [
+          {
+            addedVia: "ai_suggested",
+            pqsRank: 1,
+            pqsScore: 92,
+            promptText:
+              "Which software do brand teams trust for measuring brand visibility across Perplexity, ChatGPT, and Gemini?",
+            scoreMetadata: { topicFit: 30 },
+            scoreStatus: "scored",
+            sourceAnalysisRunId: "analysis-1",
+            templateText:
+              "Which software do teams trust for measuring {topic}?",
+            variantType: "discovery",
+          },
+          {
+            addedVia: "ai_suggested",
+            pqsRank: 2,
+            pqsScore: 89,
+            promptText:
+              "Which platform is stronger for teams that need coverage across AI answers, citation tracking, and executive reporting: Acme or Competitor 1 and Competitor 2?",
+            scoreMetadata: { topicFit: 28 },
+            scoreStatus: "scored",
+            sourceAnalysisRunId: "analysis-1",
+            templateText:
+              "Which platform is stronger for teams that need {topic}: {company} or {competitor_list}?",
+            variantType: "comparison",
+          },
+        ],
+        source: "ai_suggested",
+        sourceUrls: ["https://acme.com/alternatives/perplexity"],
+        topicName: "perplexity",
+      },
+    ],
+    warnings: [],
     ...overrides,
   }
 }
@@ -121,18 +272,19 @@ beforeEach(() => {
   mockSaveBrandDraftStep.mockReset()
   mockFetchOnboardingTopicPrompts.mockReset()
   mockCompleteOnboarding.mockReset()
-  mockFetchOnboardingBrandSuggestions.mockReset()
+  mockStartOnboardingAnalysis.mockReset()
+  mockPollOnboardingAnalysis.mockReset()
   process.env.NEXT_PUBLIC_LOGO_DEV_PUBLISHABLE_KEY = "pk_test_123"
 
-  mockFetchOnboardingBrandSuggestions.mockResolvedValue({
-    competitors: [
-      { name: "Competitor 1", website: "https://competitor-1.com" },
-      { name: "Competitor 2", website: "https://competitor-2.com" },
-      { name: "Competitor 3", website: "https://competitor-3.com" },
-      { name: "Competitor 4", website: "https://competitor-4.com" },
-    ],
-    description: "Suggested description",
-    topics: ["ai search", "google ai mode", "perplexity"],
+  mockStartOnboardingAnalysis.mockResolvedValue({
+    analysisId: "analysis-1",
+    status: "crawling",
+    warnings: [],
+  })
+  mockPollOnboardingAnalysis.mockResolvedValue({
+    analysisId: "analysis-1",
+    result: makeAnalysisResult(),
+    status: "completed",
     warnings: [],
   })
   mockFetchOnboardingTopicPrompts.mockResolvedValue({
@@ -332,10 +484,14 @@ describe("Onboarding wizard", () => {
       })
     )
     await waitFor(() =>
-      expect(mockFetchOnboardingBrandSuggestions).toHaveBeenCalledWith({
+      expect(mockStartOnboardingAnalysis).toHaveBeenCalledWith({
         companyName: "Acme",
+        projectId: "brand-1",
         website: "acme.com",
       })
+    )
+    await waitFor(() =>
+      expect(mockPollOnboardingAnalysis).toHaveBeenCalledWith("analysis-1")
     )
 
     await waitFor(() =>
@@ -347,14 +503,14 @@ describe("Onboarding wizard", () => {
     expect(screen.getByDisplayValue("Suggested description")).toBeInTheDocument()
   })
 
-  it("shows an inline loading state while step 1 suggestions are in flight", async () => {
+  it("shows an inline loading state while step 1 analysis is in flight", async () => {
     const user = userEvent.setup()
 
-    let resolveSuggestions: (
+    let resolveAnalysis: (
       value: {
-        competitors: Array<{ name: string; website: string }>
-        description: string
-        topics: string[]
+        analysisId: string
+        result: ReturnType<typeof makeAnalysisResult>
+        status: "completed"
         warnings: string[]
       }
     ) => void
@@ -365,10 +521,10 @@ describe("Onboarding wizard", () => {
         website: "https://acme.com",
       })
     )
-    mockFetchOnboardingBrandSuggestions.mockImplementation(
+    mockPollOnboardingAnalysis.mockImplementation(
       () =>
         new Promise((resolve) => {
-          resolveSuggestions = resolve
+          resolveAnalysis = resolve
         })
     )
 
@@ -379,13 +535,16 @@ describe("Onboarding wizard", () => {
     await user.click(screen.getByRole("button", { name: "Continue" }))
 
     expect(
-      await screen.findByText("Analyzing your homepage")
+      await screen.findByText("Analyzing your website context")
     ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(mockPollOnboardingAnalysis).toHaveBeenCalledWith("analysis-1")
+    )
 
-    resolveSuggestions!({
-      competitors: [],
-      description: "Suggested description",
-      topics: ["ai search", "google ai mode", "perplexity"],
+    resolveAnalysis!({
+      analysisId: "analysis-1",
+      result: makeAnalysisResult(),
+      status: "completed",
       warnings: [],
     })
 
@@ -393,6 +552,108 @@ describe("Onboarding wizard", () => {
       await screen.findByRole("heading", { name: "Describe what you do" })
     ).toBeInTheDocument()
   })
+
+  it("keeps polling until the analysis reaches a terminal state", async () => {
+    const user = userEvent.setup()
+
+    mockSaveBrandDraftStep.mockResolvedValue(
+      makeBrand({
+        company_name: "Acme",
+        website: "https://acme.com",
+      })
+    )
+
+    mockPollOnboardingAnalysis
+      .mockResolvedValueOnce({
+        analysisId: "analysis-1",
+        status: "crawling",
+        warnings: [],
+      })
+      .mockResolvedValueOnce({
+        analysisId: "analysis-1",
+        result: makeAnalysisResult(),
+        status: "completed",
+        warnings: [],
+      })
+
+    await renderWizard()
+
+    await user.type(screen.getByLabelText("Company website"), "acme.com")
+    await user.type(screen.getByLabelText("Company name"), "Acme")
+    await user.click(screen.getByRole("button", { name: "Continue" }))
+
+    await waitFor(() =>
+      expect(mockPollOnboardingAnalysis).toHaveBeenCalledTimes(1)
+    )
+
+    await waitFor(
+      () => expect(mockPollOnboardingAnalysis).toHaveBeenCalledTimes(2),
+      {
+        timeout: 2000,
+      }
+    )
+
+    expect(
+      await screen.findByRole("heading", { name: "Describe what you do" })
+    ).toBeInTheDocument()
+  })
+
+  it(
+    "does not fail long-running analysis before completion",
+    async () => {
+    const user = userEvent.setup()
+
+    mockSaveBrandDraftStep.mockResolvedValue(
+      makeBrand({
+        company_name: "Acme",
+        website: "https://acme.com",
+      })
+    )
+
+    let pollCount = 0
+    mockPollOnboardingAnalysis.mockImplementation(async () => {
+      pollCount += 1
+
+      if (pollCount <= 22) {
+        return {
+          analysisId: "analysis-1",
+          status: "crawling" as const,
+          warnings: [],
+        }
+      }
+
+      return {
+        analysisId: "analysis-1",
+        result: makeAnalysisResult(),
+        status: "completed" as const,
+        warnings: [],
+      }
+    })
+
+    await renderWizard()
+
+    await user.type(screen.getByLabelText("Company website"), "acme.com")
+    await user.type(screen.getByLabelText("Company name"), "Acme")
+    await user.click(screen.getByRole("button", { name: "Continue" }))
+
+    await waitFor(
+      () => expect(mockPollOnboardingAnalysis).toHaveBeenCalledTimes(23),
+      {
+        timeout: 10000,
+      }
+    )
+
+    expect(
+      await screen.findByRole("heading", { name: "Describe what you do" })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(
+        "Analysis timed out before the crawl finished. Continue manually."
+      )
+    ).not.toBeInTheDocument()
+    },
+    15000
+  )
 
   it("blocks invalid step 2 submissions", async () => {
     const user = userEvent.setup()
@@ -613,13 +874,18 @@ describe("Onboarding wizard", () => {
         website: "https://acme.com",
       })
     )
-    mockFetchOnboardingBrandSuggestions.mockResolvedValue({
-      competitors: [],
-      description: "",
-      topics: [],
-      warnings: [
-        "We found fewer than 3 strong topics. Review and add topics before continuing.",
-      ],
+    mockPollOnboardingAnalysis.mockResolvedValue({
+      analysisId: "analysis-1",
+      result: makeAnalysisResult({
+        competitors: [],
+        description: "",
+        topics: [],
+        warnings: [
+          "We found fewer than 3 strong topics. Review and add topics before continuing.",
+        ],
+      }),
+      status: "completed",
+      warnings: [],
     })
 
     await renderWizard()
@@ -667,10 +933,13 @@ describe("Onboarding wizard", () => {
         website: "https://acme.com",
       })
     )
-    mockFetchOnboardingBrandSuggestions.mockResolvedValue({
-      competitors: [],
-      description: "Suggested description",
-      topics: [],
+    mockPollOnboardingAnalysis.mockResolvedValue({
+      analysisId: "analysis-1",
+      result: makeAnalysisResult({
+        competitors: [],
+        topics: [],
+      }),
+      status: "completed",
       warnings: [],
     })
 
@@ -684,10 +953,10 @@ describe("Onboarding wizard", () => {
       await screen.findByRole("heading", { name: "Describe what you do" })
     ).toBeInTheDocument()
     expect(
-      screen.getByText(/The AI model could not load any topics\./)
+      screen.getByText(/The analysis could not load any topics\./)
     ).toBeInTheDocument()
     expect(
-      screen.getByText(/The AI model could not load any competitors\./)
+      screen.getByText(/The analysis could not load any competitors\./)
     ).toBeInTheDocument()
   })
 
@@ -700,25 +969,96 @@ describe("Onboarding wizard", () => {
         website: "https://acme.com",
       })
     )
-    mockFetchOnboardingBrandSuggestions
+    mockStartOnboardingAnalysis
       .mockResolvedValueOnce({
-        competitors: [
-          { name: "Competitor 1", website: "https://competitor-1.com" },
-          { name: "Competitor 2", website: "https://competitor-2.com" },
-          { name: "Competitor 3", website: "https://competitor-3.com" },
-        ],
-        description: "First suggestion",
-        topics: ["ai search", "perplexity", "brand search"],
+        analysisId: "analysis-1",
+        status: "crawling",
         warnings: [],
       })
       .mockResolvedValueOnce({
-        competitors: [
-          { name: "Competitor X", website: "https://competitor-x.com" },
-          { name: "Competitor Y", website: "https://competitor-y.com" },
-          { name: "Competitor Z", website: "https://competitor-z.com" },
-        ],
-        description: "Second suggestion",
-        topics: ["llm visibility", "answer engines", "ai citations"],
+        analysisId: "analysis-2",
+        status: "crawling",
+        warnings: [],
+      })
+    mockPollOnboardingAnalysis
+      .mockResolvedValueOnce({
+        analysisId: "analysis-1",
+        result: makeAnalysisResult({
+          competitors: [
+            { name: "Competitor 1", website: "https://competitor-1.com" },
+            { name: "Competitor 2", website: "https://competitor-2.com" },
+            { name: "Competitor 3", website: "https://competitor-3.com" },
+          ],
+          description: "First suggestion",
+          topics: [
+            {
+              clusterId: "cluster-1",
+              intentSummary: "AI search evaluation",
+              prompts: [],
+              source: "ai_suggested",
+              sourceUrls: ["https://acme.com/compare"],
+              topicName: "ai search",
+            },
+            {
+              clusterId: "cluster-2",
+              intentSummary: "Perplexity evaluation",
+              prompts: [],
+              source: "ai_suggested",
+              sourceUrls: ["https://acme.com/alternatives"],
+              topicName: "perplexity",
+            },
+            {
+              clusterId: "cluster-3",
+              intentSummary: "Brand search evaluation",
+              prompts: [],
+              source: "ai_suggested",
+              sourceUrls: ["https://acme.com/blog/brand-search"],
+              topicName: "brand search",
+            },
+          ],
+          warnings: [],
+        }),
+        status: "completed",
+        warnings: [],
+      })
+      .mockResolvedValueOnce({
+        analysisId: "analysis-2",
+        result: makeAnalysisResult({
+          competitors: [
+            { name: "Competitor X", website: "https://competitor-x.com" },
+            { name: "Competitor Y", website: "https://competitor-y.com" },
+            { name: "Competitor Z", website: "https://competitor-z.com" },
+          ],
+          description: "Second suggestion",
+          topics: [
+            {
+              clusterId: "cluster-1",
+              intentSummary: "LLM visibility evaluation",
+              prompts: [],
+              source: "ai_suggested",
+              sourceUrls: ["https://acme.ai/pricing"],
+              topicName: "llm visibility",
+            },
+            {
+              clusterId: "cluster-2",
+              intentSummary: "Answer engines evaluation",
+              prompts: [],
+              source: "ai_suggested",
+              sourceUrls: ["https://acme.ai/blog/answer-engines"],
+              topicName: "answer engines",
+            },
+            {
+              clusterId: "cluster-3",
+              intentSummary: "AI citations evaluation",
+              prompts: [],
+              source: "ai_suggested",
+              sourceUrls: ["https://acme.ai/compare/citations"],
+              topicName: "ai citations",
+            },
+          ],
+          warnings: [],
+        }),
+        status: "completed",
         warnings: [],
       })
 

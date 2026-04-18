@@ -1,6 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mockGenerateText = vi.fn()
+const mockStepCountIs = vi.fn((count: number) => ({
+  count,
+  type: "stepCountIs",
+}))
+const mockPerplexitySearch = vi.fn((options?: Record<string, unknown>) => ({
+  options,
+  type: "perplexity_search",
+}))
+const mockGetGatewayTools = vi.fn(() => ({
+  perplexitySearch: mockPerplexitySearch,
+}))
 const mockGetLanguageModel = vi.fn(
   (_providerId: string, options?: { capability?: string }) => ({
     capability: options?.capability ?? "default",
@@ -13,9 +24,11 @@ vi.mock("ai", () => ({
     object: ({ schema }: { schema: unknown }) => ({ schema }),
   },
   generateText: mockGenerateText,
+  stepCountIs: mockStepCountIs,
 }))
 
 vi.mock("@/lib/ai/provider-config", () => ({
+  getGatewayTools: mockGetGatewayTools,
   getLanguageModel: mockGetLanguageModel,
 }))
 
@@ -27,7 +40,10 @@ describe("normalizeBrandOnboarding", () => {
   beforeEach(() => {
     vi.resetModules()
     mockGenerateText.mockReset()
+    mockGetGatewayTools.mockClear()
     mockGetLanguageModel.mockClear()
+    mockPerplexitySearch.mockClear()
+    mockStepCountIs.mockClear()
   })
 
   it("uses raw markdown for tier 1 and conditionally augments competitors in tier 2", async () => {
@@ -126,7 +142,27 @@ describe("normalizeBrandOnboarding", () => {
     })
     expect(tierTwoCall[0].prompt).toContain("Tier 1 description")
     expect(tierTwoCall[0].prompt).toContain("Tier 1 topics")
-    expect(tierTwoCall[0].tools).toBeUndefined()
+    expect(mockGetGatewayTools).toHaveBeenCalledTimes(1)
+    expect(mockPerplexitySearch).toHaveBeenCalledWith({
+      country: "US",
+      maxResults: 5,
+      searchLanguageFilter: ["en"],
+    })
+    expect(tierTwoCall[0].tools).toEqual({
+      perplexity_search: {
+        options: {
+          country: "US",
+          maxResults: 5,
+          searchLanguageFilter: ["en"],
+        },
+        type: "perplexity_search",
+      },
+    })
+    expect(mockStepCountIs).toHaveBeenCalledWith(3)
+    expect(tierTwoCall[0].stopWhen).toEqual({
+      count: 3,
+      type: "stepCountIs",
+    })
 
     expect(result.description).toHaveLength(500)
     expect(result.topics).toEqual([
