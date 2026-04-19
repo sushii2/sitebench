@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mockAuthenticateOnboardingRequest = vi.fn()
 const mockCreateAuthenticatedOnboardingClient = vi.fn()
-const mockAdvanceOnboardingAnalysisRun = vi.fn()
+const mockLoadOnboardingAnalysisRunStatus = vi.fn()
 
 vi.mock("@/lib/onboarding", async () => {
   const actual =
@@ -10,9 +10,9 @@ vi.mock("@/lib/onboarding", async () => {
 
   return {
     ...actual,
-    advanceOnboardingAnalysisRun: mockAdvanceOnboardingAnalysisRun,
     authenticateOnboardingRequest: mockAuthenticateOnboardingRequest,
     createAuthenticatedOnboardingClient: mockCreateAuthenticatedOnboardingClient,
+    loadOnboardingAnalysisRunStatus: mockLoadOnboardingAnalysisRunStatus,
   }
 })
 
@@ -27,7 +27,7 @@ describe("GET /api/onboarding/analysis/[analysisId]", () => {
     vi.resetModules()
     mockAuthenticateOnboardingRequest.mockReset()
     mockCreateAuthenticatedOnboardingClient.mockReset()
-    mockAdvanceOnboardingAnalysisRun.mockReset()
+    mockLoadOnboardingAnalysisRunStatus.mockReset()
 
     mockAuthenticateOnboardingRequest.mockResolvedValue({
       id: "user-1",
@@ -36,9 +36,25 @@ describe("GET /api/onboarding/analysis/[analysisId]", () => {
       auth: {},
       database: {},
     })
-    mockAdvanceOnboardingAnalysisRun.mockResolvedValue({
+    mockLoadOnboardingAnalysisRunStatus.mockResolvedValue({
       analysisId: "analysis-1",
       result: {
+        brandProfile: {
+          careers: null,
+          categories: ["running shoes", "athletic apparel"],
+          detailedDescription:
+            "Acme sells performance footwear and apparel for runners.",
+          geography: "United States",
+          jobsToBeDone: ["find durable running shoes", "shop by fit"],
+          keywords: ["running shoes", "trail shoes"],
+          pricing: "mid-market retail pricing",
+          primaryCategory: "running shoes",
+          primarySubcategory: "trail running shoes",
+          products: ["trail shoes", "road shoes", "running apparel"],
+          siteArchetype: "ecommerce",
+          targetCustomers: ["runners", "active shoppers"],
+          warnings: [],
+        },
         competitors: [
           { name: "Competitor 1", website: "https://competitor-1.com" },
         ],
@@ -46,11 +62,11 @@ describe("GET /api/onboarding/analysis/[analysisId]", () => {
         topics: [
           {
             clusterId: "cluster-1",
-            intentSummary: "Buyer discovery for AI visibility software",
+            intentSummary: "Buyer discovery for trail running shoes",
             prompts: [],
             source: "ai_suggested",
-            sourceUrls: ["https://acme.com/pricing"],
-            topicName: "ai visibility",
+            sourceUrls: ["https://acme.com/collections/trail-running"],
+            topicName: "trail running shoes",
           },
         ],
         warnings: [],
@@ -76,7 +92,7 @@ describe("GET /api/onboarding/analysis/[analysisId]", () => {
     expect(response.status).toBe(401)
   })
 
-  it("returns the advanced analysis status", async () => {
+  it("loads persisted analysis status without advancing the workflow", async () => {
     const GET = await loadRoute()
     const response = await GET(
       new Request("http://localhost/api/onboarding/analysis/analysis-1", {
@@ -92,29 +108,14 @@ describe("GET /api/onboarding/analysis/[analysisId]", () => {
     )
 
     expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       analysisId: "analysis-1",
-      result: {
-        competitors: [
-          { name: "Competitor 1", website: "https://competitor-1.com" },
-        ],
-        description: "Suggested description",
-        topics: [
-          {
-            clusterId: "cluster-1",
-            intentSummary: "Buyer discovery for AI visibility software",
-            prompts: [],
-            source: "ai_suggested",
-            sourceUrls: ["https://acme.com/pricing"],
-            topicName: "ai visibility",
-          },
-        ],
-        warnings: [],
-      },
       status: "completed",
-      warnings: [],
     })
-    expect(mockAdvanceOnboardingAnalysisRun).toHaveBeenCalledWith(
+    expect(mockCreateAuthenticatedOnboardingClient).toHaveBeenCalledWith(
+      "Bearer token-123"
+    )
+    expect(mockLoadOnboardingAnalysisRunStatus).toHaveBeenCalledWith(
       expect.objectContaining({
         auth: {},
         database: {},

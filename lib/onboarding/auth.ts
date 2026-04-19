@@ -3,7 +3,7 @@ import { createClient, type UserSchema } from "@insforge/sdk"
 import { resolveInsforgePublicConfig } from "@/lib/insforge/config"
 
 const MISSING_ANALYSIS_TABLES_MESSAGE =
-  "The onboarding analysis tables are missing. Apply db/migrations/0004_onboarding_site_analysis.sql before using the crawl flow."
+  "The onboarding analysis tables are missing. Apply db/migrations/0004_onboarding_site_analysis.sql and db/migrations/0005_onboarding_workflow_analysis.sql before using the crawl flow."
 
 export function extractBearerToken(authorization: string | null) {
   if (!authorization) {
@@ -15,9 +15,7 @@ export function extractBearerToken(authorization: string | null) {
   return match?.[1]?.trim() || null
 }
 
-export function createAuthenticatedOnboardingClient(authorization: string | null) {
-  const token = extractBearerToken(authorization)
-
+export function createAuthenticatedOnboardingClientFromToken(token: string | null) {
   if (!token) {
     throw new Error("You must be signed in to continue.")
   }
@@ -33,6 +31,12 @@ export function createAuthenticatedOnboardingClient(authorization: string | null
     edgeFunctionToken: token,
     isServerMode: true,
   })
+}
+
+export function createAuthenticatedOnboardingClient(authorization: string | null) {
+  return createAuthenticatedOnboardingClientFromToken(
+    extractBearerToken(authorization)
+  )
 }
 
 function extractSchemaProbeMessage(bodyText: string) {
@@ -81,7 +85,11 @@ export async function assertOnboardingAnalysisTablesAvailable(
 
   const { baseUrl } = resolveInsforgePublicConfig()
 
-  for (const tableName of ["site_crawl_runs", "site_crawl_pages"]) {
+  for (const tableName of [
+    "site_crawl_runs",
+    "site_crawl_pages",
+    "site_crawl_mapped_pages",
+  ]) {
     const response = await fetch(
       `${baseUrl}/api/database/records/${tableName}?select=id&limit=1`,
       {

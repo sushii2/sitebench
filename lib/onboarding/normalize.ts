@@ -1,5 +1,9 @@
-import { Output, generateText, stepCountIs } from "ai"
+import { generateText, stepCountIs } from "ai"
 
+import {
+  buildGatewayStructuredOutputSystemPrompt,
+  createGatewayStructuredObjectOutput,
+} from "@/lib/ai/gateway-structured-output"
 import { getGatewayTools, getLanguageModel } from "@/lib/ai/provider-config"
 import { normalizeBrandTopics, normalizeDescription, normalizeWebsite } from "@/lib/brands"
 import {
@@ -20,7 +24,7 @@ const FALLBACK_DESCRIPTION_SEGMENT_LENGTH = 320
 const TIER_TWO_FAILURE_WARNING =
   "We could not improve competitors with web search. Review and add competitors if needed."
 
-const ONBOARDING_SYSTEM_PROMPT = [
+const ONBOARDING_SYSTEM_PROMPT = buildGatewayStructuredOutputSystemPrompt([
   "You are an expert GEO/AEO onboarding analysis assistant.",
   "Your job is to analyze a scraped website homepage and return only the onboarding fields required by the schema: description, topics, and competitors.",
   "Do not write like a marketer. Do not embellish. Do not guess when the homepage does not support a conclusion.",
@@ -41,12 +45,16 @@ const ONBOARDING_SYSTEM_PROMPT = [
   "Ignore low-signal content such as cookie banners, legal boilerplate, repetitive CTA text, generic claims, and navigation labels unless they add real evidence.",
   "If you are unsure about a field, return an empty string or empty array for that field instead of hallucinating.",
   "Do not include the input company as its own competitor.",
+  "Use concise, customer-facing language and keep the description factual.",
+  "Topics should sound like realistic buyer research questions or monitoring themes, not keyword fragments.",
+  "Competitors must be direct substitutes, not ecosystem companies or adjacent vendors.",
   "IMPORTANT: Focus only on the expected fields from the model response. Return only description, topics, and competitors.",
   "IMPORTANT: Do not add explanations, metadata, evidence, confidence labels, reasoning, or extra structure.",
   "IMPORTANT: Principles: Validate outcomes, iterate if needed, efficiency.",
-].join(" ")
+])
 
-const COMPETITOR_RECOVERY_SYSTEM_PROMPT = [
+const COMPETITOR_RECOVERY_SYSTEM_PROMPT =
+  buildGatewayStructuredOutputSystemPrompt([
   "You are an expert competitive intelligence assistant for onboarding.",
   "Use web search only to recover direct competitors for a specific company when homepage evidence alone was insufficient.",
   "Anchor your search on the supplied company name, website, Tier 1 description, and Tier 1 topics.",
@@ -55,9 +63,10 @@ const COMPETITOR_RECOVERY_SYSTEM_PROMPT = [
   "Exclude the input company, customers, partners, integrations, marketplaces, publishers, agencies, and adjacent tools.",
   "Prefer official competitor homepage URLs.",
   "If evidence is weak, return fewer competitors or an empty array instead of guessing.",
+  "Favor competitors repeatedly mentioned across reputable search results over speculative long-tail matches.",
   "IMPORTANT: Focus only on the expected fields from the model response.",
   "IMPORTANT: Principles: Validate outcomes, iterate if needed, efficiency.",
-].join(" ")
+])
 
 function normalizeWhitespace(value: string) {
   return value.trim().replace(/\s+/g, " ")
@@ -177,7 +186,10 @@ async function recoverCompetitorsWithWebSearch(input: {
     model: getLanguageModel("openai", {
       capability: "webSearch",
     }),
-    output: Output.object({
+    output: createGatewayStructuredObjectOutput({
+      description:
+        "Structured direct competitor recovery for onboarding analysis.",
+      name: "onboarding_competitor_recovery",
       schema: onboardingCompetitorRecoverySchema,
     }),
     system: COMPETITOR_RECOVERY_SYSTEM_PROMPT,
@@ -274,11 +286,15 @@ export async function normalizeBrandOnboarding(
     model: getLanguageModel("openai", {
       capability: "structuredOutput",
     }),
-    output: Output.object({
+    output: createGatewayStructuredObjectOutput({
+      description:
+        "Structured homepage onboarding synthesis with description, topics, and competitors.",
+      name: "onboarding_brand_suggestion",
       schema: onboardingAiSuggestionSchema,
     }),
     system: ONBOARDING_SYSTEM_PROMPT,
     prompt: createTierOnePrompt(input),
+    temperature: 0,
   })
 
   console.log("[onboarding] Tier 1 AI output", {

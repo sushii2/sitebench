@@ -1,81 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const mockGenerateText = vi.fn()
-const mockEmbedMany = vi.fn()
-const mockJsonSchema = vi.fn((schema: unknown) => ({
-  jsonSchema: async () => schema,
-  validate: async (value: unknown) => ({ success: true, value }),
-}))
-const mockStepCountIs = vi.fn((count: number) => ({
-  count,
-  type: "stepCountIs",
-}))
-const mockPerplexitySearch = vi.fn((options?: Record<string, unknown>) => ({
-  options,
-  type: "perplexity_search",
-}))
-const mockGetGatewayTools = vi.fn(() => ({
-  perplexitySearch: mockPerplexitySearch,
-}))
-const mockGetLanguageModel = vi.fn(
-  (_providerId: string, options?: { capability?: string }) => ({
-    capability: options?.capability ?? "default",
-    provider: "gateway",
-  })
-)
-const mockGetEmbeddingModel = vi.fn(() => ({
-  modelId: "openai/text-embedding-3-small",
-  provider: "gateway",
-}))
+const mockStart = vi.fn()
+const mockCreateSiteCrawlRun = vi.fn()
 const mockLoadSiteCrawlRun = vi.fn()
 const mockUpdateSiteCrawlRun = vi.fn()
-const mockListSiteCrawlPagesByRun = vi.fn()
-const mockGenerateTopicPromptCollection = vi.fn()
 
-vi.mock("ai", () => ({
-  Output: {
-    object: ({ schema }: { schema: unknown }) => ({ schema }),
-  },
-  cosineSimilarity: () => 0,
-  embedMany: mockEmbedMany,
-  generateText: mockGenerateText,
-  jsonSchema: mockJsonSchema,
-  stepCountIs: mockStepCountIs,
-}))
-
-vi.mock("@/lib/ai/provider-config", () => ({
-  getEmbeddingModel: mockGetEmbeddingModel,
-  getGatewayTools: mockGetGatewayTools,
-  getLanguageModel: mockGetLanguageModel,
+vi.mock("workflow/api", () => ({
+  start: mockStart,
 }))
 
 vi.mock("@/lib/site-crawl-runs/repository", () => ({
-  createSiteCrawlRun: vi.fn(),
+  createSiteCrawlRun: mockCreateSiteCrawlRun,
   loadSiteCrawlRun: mockLoadSiteCrawlRun,
   updateSiteCrawlRun: mockUpdateSiteCrawlRun,
-}))
-
-vi.mock("@/lib/site-crawl-pages/repository", () => ({
-  listSiteCrawlPagesByRun: mockListSiteCrawlPagesByRun,
-  replaceSiteCrawlPages: vi.fn(),
-}))
-
-vi.mock("@/lib/onboarding/firecrawl", () => ({
-  getOnboardingCrawlStatus: vi.fn(),
-  mapWebsiteUrls: vi.fn(),
-  scrapeBrandHomepage: vi.fn(),
-  startOnboardingCrawl: vi.fn(),
-  toFirecrawlDocuments: vi.fn(),
-}))
-
-vi.mock("@/lib/onboarding/normalize", () => ({
-  buildFallbackOnboardingSuggestions: vi.fn(),
-  mergeOnboardingWarnings: vi.fn(),
-  normalizeBrandOnboarding: vi.fn(),
-}))
-
-vi.mock("@/lib/onboarding/topic-prompt-generator", () => ({
-  generateTopicPromptCollection: mockGenerateTopicPromptCollection,
 }))
 
 vi.mock("@/lib/onboarding/analysis-logging", () => ({
@@ -87,259 +24,181 @@ async function loadAnalysisModule() {
   return import("@/lib/onboarding/analysis")
 }
 
-describe("advanceOnboardingAnalysisRun", () => {
+describe("workflow-backed onboarding analysis", () => {
   beforeEach(() => {
     vi.resetModules()
-    mockEmbedMany.mockReset()
-    mockGenerateText.mockReset()
-    mockGenerateTopicPromptCollection.mockReset()
-    mockGetEmbeddingModel.mockClear()
-    mockGetGatewayTools.mockClear()
-    mockGetLanguageModel.mockClear()
-    mockJsonSchema.mockClear()
-    mockListSiteCrawlPagesByRun.mockReset()
+    mockCreateSiteCrawlRun.mockReset()
     mockLoadSiteCrawlRun.mockReset()
-    mockPerplexitySearch.mockClear()
-    mockStepCountIs.mockClear()
+    mockStart.mockReset()
     mockUpdateSiteCrawlRun.mockReset()
 
-    const pageSignals = [
-      {
-        canonical_url: "https://acme.com/pricing",
-        competitor_candidates_json: {
-          competitors: [],
-        },
-        confidence: 0.92,
-        content_snapshot: "Pricing overview for AI visibility software.",
-        entities_json: {
-          entities: ["Acme Pricing"],
-        },
-        evidenceSnippets: ["Pricing overview for AI visibility software."],
-        intents: ["pricing evaluation"],
-        intents_json: {
-          intents: ["pricing evaluation"],
-        },
-        meta_description: "Pricing overview",
-        pageType: "pricing",
-        page_metadata_json: {},
-        selection_reason: "Pricing page",
-        selection_score: 95,
-        summary: "Pricing overview for AI visibility software.",
-        title: "Pricing",
-        url: "https://acme.com/pricing",
-      },
-    ]
-
-    mockLoadSiteCrawlRun
-      .mockResolvedValueOnce({
-        firecrawl_job_ids: [],
-        id: "analysis-1",
-        project_id: "project-1",
-        result_json: {
-          companyName: "Acme",
-          pageSignals,
-          website: "https://acme.com",
-        },
-        status: "extracting",
-        warnings: [],
-      })
-      .mockResolvedValueOnce({
-        firecrawl_job_ids: [],
-        id: "analysis-1",
-        project_id: "project-1",
-        result_json: {
-          companyName: "Acme",
-          pageSignals,
-          website: "https://acme.com",
-        },
-        status: "extracting",
-        warnings: [],
-      })
-
-    mockListSiteCrawlPagesByRun.mockResolvedValue([])
-    mockEmbedMany.mockResolvedValue({
-      embeddings: [[0.1, 0.2]],
-    })
-    mockGenerateText
-      .mockResolvedValueOnce({
-        output: {
-          adjacentCategories: ["brand intelligence"],
-          category: "AI visibility platform",
-          competitors: [
-            {
-              name: "Competitor 1",
-              website: "https://competitor-1.com",
-            },
-          ],
-          differentiators: ["citation tracking", "executive reporting"],
-          description: "Acme helps teams measure AI visibility.",
-          evidenceUrls: ["https://acme.com/pricing"],
-          productCategories: ["AI visibility"],
-          targetAudiences: ["marketing teams"],
-          topUseCases: ["track citations in ChatGPT"],
-          warnings: [],
-        },
-      })
-      .mockResolvedValueOnce({
-        output: {
-          topics: [
-            {
-              clusterId: "cluster-1",
-              intentSummary: "Buyer evaluation of AI visibility software",
-              source: "ai_suggested",
-              sourceUrls: ["https://acme.com/pricing"],
-              topicName: "AI visibility software",
-            },
-          ],
-        },
-      })
-      .mockResolvedValueOnce({
-        output: {
-          topics: [
-            {
-              prompts: [
-                {
-                  brandRelevance: "direct",
-                  commercialValue: "high",
-                  intentType: "comparison",
-                  likelyCompetitors: ["Competitor 1"],
-                  persona: "Marketing lead",
-                  promptText:
-                    "How does Acme compare with Competitor 1 on pricing?",
-                  purchaseStage: "decision",
-                  rationale: "Matches the pricing intent and product category.",
-                  segment: "marketing teams",
-                  templateText:
-                    "{company} vs {competitor_list} for {job_to_be_done}",
-                  variantType: "comparison",
-                },
-              ],
-              topicName: "AI visibility software",
-            },
-          ],
-        },
-      })
-      .mockResolvedValueOnce({
-        sources: [
-          {
-            sourceType: "url",
-            title: "Acme Pricing",
-            url: "https://acme.com/pricing",
-          },
-        ],
-        text: [
-          "Prompt evaluation notes:",
-          "- Prompt: How does Acme compare with Competitor 1 on pricing?",
-          "  Keep: yes",
-          "  Reason: Matches the pricing intent and aligns with the source material.",
-          "  Evidence URL: https://acme.com/pricing",
-        ].join("\n"),
-      })
-      .mockResolvedValueOnce({
-        output: {
-          scoredPrompts: [
-            {
-              breakdown: {
-                brandCompetitorRelevance: 10,
-                buyerValue: 15,
-                evidenceGrounding: 10,
-                naturalUserPhrasing: 20,
-                specificity: 15,
-                topicFit: 30,
-              },
-              evidenceUrls: ["https://acme.com/pricing"],
-              keep: true,
-              pqsScore: 93,
-              reason: "Matches the pricing intent.",
-              renderedPromptText:
-                "How does Acme compare with Competitor 1 on pricing?",
-              replacementPromptText: null,
-              variantType: "comparison",
-            },
-          ],
-        },
-      })
-    mockGenerateTopicPromptCollection.mockResolvedValue({
-      topics: [
-        {
-          prompts: [
-            {
-              addedVia: "ai_suggested",
-              promptText:
-                "How does Acme compare with Competitor 1 on pricing?",
-              scoreMetadata: {
-                brandRelevance: "direct",
-                commercialValue: "high",
-                intentType: "comparison",
-              },
-              scoreStatus: "unscored",
-              templateText:
-                "{company} vs {competitor_list} for {job_to_be_done}",
-              variantType: "comparison",
-            },
-          ],
-          source: "ai_suggested",
-          topicName: "AI visibility software",
-        },
-      ],
+    mockCreateSiteCrawlRun.mockResolvedValue({
+      analysis_version: 2,
+      completed_at: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      error_message: null,
+      firecrawl_job_ids: [],
+      id: "analysis-1",
+      project_id: "project-1",
+      result_json: null,
+      selected_url_count: 0,
+      started_at: "2026-01-01T00:00:00.000Z",
+      status: "mapping",
+      trigger_type: "onboarding",
+      updated_at: "2026-01-01T00:00:00.000Z",
       warnings: [],
+      workflow_run_id: null,
+    })
+    mockStart.mockResolvedValue({
+      runId: "workflow-run-1",
     })
     mockUpdateSiteCrawlRun.mockImplementation(async (_client, id, patch) => ({
+      analysis_version: 2,
+      completed_at: patch.completed_at ?? null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      error_message: patch.error_message ?? null,
+      firecrawl_job_ids: [],
       id,
-      status: patch.status ?? "extracting",
+      project_id: "project-1",
+      result_json: patch.result_json ?? null,
+      selected_url_count: patch.selected_url_count ?? 0,
+      started_at: "2026-01-01T00:00:00.000Z",
+      status: patch.status ?? "mapping",
+      trigger_type: "onboarding",
+      updated_at: "2026-01-01T00:00:00.000Z",
       warnings: patch.warnings ?? [],
+      workflow_run_id: patch.workflow_run_id ?? "workflow-run-1",
     }))
   })
 
-  it("builds a brand profile, clustered topics, structured prompt candidates, and then scores them", async () => {
-    const { advanceOnboardingAnalysisRun } = await loadAnalysisModule()
+  it("creates a run, starts the workflow, and persists the workflow run id", async () => {
+    const { startOnboardingAnalysisRun } = await loadAnalysisModule()
     const client = {
       auth: {} as never,
       database: {} as never,
     }
 
-    await advanceOnboardingAnalysisRun(client, "analysis-1")
-
-    expect(mockGenerateText).toHaveBeenCalledTimes(4)
-    const brandProfileCall = mockGenerateText.mock.calls[0]?.[0]
-    const topicCall = mockGenerateText.mock.calls[1]?.[0]
-    const searchCall = mockGenerateText.mock.calls[2]?.[0]
-    const scoringCall = mockGenerateText.mock.calls[3]?.[0]
-
-    expect(brandProfileCall.system).toContain(
-      "Return a structured brand profile grounded in the supplied crawl evidence."
+    const result = await startOnboardingAnalysisRun(
+      client,
+      {
+        companyName: "Acme",
+        projectId: "project-1",
+        website: "https://acme.com",
+      },
+      "Bearer user-token"
     )
-    expect(topicCall.system).toContain(
-      "Use the brand profile plus the crawl evidence to generate buyer-facing topic clusters."
-    )
-    expect(mockGenerateTopicPromptCollection).toHaveBeenCalledWith(
+
+    expect(mockCreateSiteCrawlRun).toHaveBeenCalledWith(client, {
+      analysisVersion: 2,
+      projectId: "project-1",
+    })
+    expect(mockStart).toHaveBeenCalledWith(expect.any(Function), [
+      {
+        analysisId: "analysis-1",
+        analysisVersion: 2,
+        authToken: "user-token",
+        companyName: "Acme",
+        projectId: "project-1",
+        website: "https://acme.com",
+      },
+    ])
+    expect(mockUpdateSiteCrawlRun).toHaveBeenCalledWith(
+      client,
+      "analysis-1",
       expect.objectContaining({
-        analysisRunId: "analysis-1",
-        brandProfile: expect.objectContaining({
-          category: "AI visibility platform",
-          topUseCases: ["track citations in ChatGPT"],
-        }),
+        status: "mapping",
+        workflow_run_id: "workflow-run-1",
       })
     )
-    expect(mockStepCountIs).toHaveBeenCalledWith(3)
-    expect(searchCall.stopWhen).toEqual({
-      count: 3,
-      type: "stepCountIs",
+    expect(result).toEqual({
+      analysisId: "analysis-1",
+      status: "mapping",
+      warnings: [],
     })
-    expect(searchCall.tools).toEqual({
-      perplexity_search: {
-        options: {
-          country: "US",
-          maxResults: 5,
-          searchLanguageFilter: ["en"],
+  })
+
+  it("rejects onboarding analysis start without a user bearer token", async () => {
+    const { startOnboardingAnalysisRun } = await loadAnalysisModule()
+    const client = {
+      auth: {} as never,
+      database: {} as never,
+    }
+
+    await expect(
+      startOnboardingAnalysisRun(
+        client,
+        {
+          companyName: "Acme",
+          projectId: "project-1",
+          website: "https://acme.com",
         },
-        type: "perplexity_search",
+        null
+      )
+    ).rejects.toThrow("You must be signed in to continue.")
+
+    expect(mockCreateSiteCrawlRun).not.toHaveBeenCalled()
+    expect(mockStart).not.toHaveBeenCalled()
+  })
+
+  it("returns persisted status without advancing the workflow", async () => {
+    mockLoadSiteCrawlRun.mockResolvedValue({
+      analysis_version: 2,
+      completed_at: "2026-01-01T00:02:00.000Z",
+      created_at: "2026-01-01T00:00:00.000Z",
+      error_message: null,
+      firecrawl_job_ids: [],
+      id: "analysis-1",
+      project_id: "project-1",
+      result_json: {
+        brandProfile: {
+          careers: null,
+          categories: ["security automation"],
+          detailedDescription:
+            "Acme helps security teams automate investigations and compliance workflows.",
+          geography: "North America",
+          jobsToBeDone: ["automate investigations"],
+          keywords: ["security automation"],
+          pricing: "enterprise SaaS pricing",
+          primaryCategory: "security automation",
+          primarySubcategory: "security automation platform",
+          products: ["incident response automation"],
+          siteArchetype: "saas",
+          targetCustomers: ["security teams"],
+          warnings: [],
+        },
+        competitors: [],
+        description:
+          "Acme helps security teams automate investigations and compliance workflows.",
+        topics: [],
+        warnings: [],
+      },
+      selected_url_count: 4,
+      started_at: "2026-01-01T00:00:00.000Z",
+      status: "completed",
+      trigger_type: "onboarding",
+      updated_at: "2026-01-01T00:02:00.000Z",
+      warnings: [],
+      workflow_run_id: "workflow-run-1",
+    })
+
+    const { loadOnboardingAnalysisRunStatus } = await loadAnalysisModule()
+    const client = {
+      auth: {} as never,
+      database: {} as never,
+    }
+
+    const result = await loadOnboardingAnalysisRunStatus(client, "analysis-1")
+
+    expect(mockLoadSiteCrawlRun).toHaveBeenCalledWith(client, "analysis-1")
+    expect(result).toMatchObject({
+      analysisId: "analysis-1",
+      status: "completed",
+      result: {
+        brandProfile: {
+          primaryCategory: "security automation",
+          siteArchetype: "saas",
+        },
       },
     })
-    expect(searchCall.output).toBeUndefined()
-    expect(scoringCall.tools).toBeUndefined()
-    expect(scoringCall.output).toBeDefined()
-    expect(scoringCall.prompt).toContain("Web research notes:")
-    expect(scoringCall.prompt).toContain("Grounding URLs:")
   })
 })

@@ -37,12 +37,14 @@ function takeSingleRow<T>(value: T | T[] | null | undefined) {
 export async function createSiteCrawlRun(
   client: SiteCrawlRunClient,
   input: {
+    analysisVersion?: number
     projectId: string
     triggerType?: SiteCrawlRunTriggerType
   }
 ): Promise<SiteCrawlRun> {
   const runId = crypto.randomUUID()
   const initialValues = {
+    analysis_version: input.analysisVersion ?? 2,
     completed_at: null,
     error_message: null,
     firecrawl_job_ids: [],
@@ -53,6 +55,7 @@ export async function createSiteCrawlRun(
     started_at: new Date().toISOString(),
     status: "mapping" satisfies SiteCrawlRunStatus,
     trigger_type: input.triggerType ?? "onboarding",
+    workflow_run_id: null,
     warnings: [],
   }
 
@@ -141,6 +144,7 @@ export async function updateSiteCrawlRun(
       | "result_json"
       | "selected_url_count"
       | "status"
+      | "workflow_run_id"
       | "warnings"
     >
   >

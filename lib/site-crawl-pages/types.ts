@@ -1,10 +1,16 @@
 export type SiteCrawlPageType =
   | "homepage"
-  | "product"
+  | "product_hub"
   | "pricing"
-  | "comparison"
-  | "blog"
-  | "excluded"
+  | "category_hub"
+  | "solution_page"
+  | "integration_page"
+  | "proof_page"
+  | "comparison_page"
+  | "geography_page"
+  | "careers_page"
+  | "editorial_page"
+  | "other"
 
 export interface SiteCrawlPage {
   id: string

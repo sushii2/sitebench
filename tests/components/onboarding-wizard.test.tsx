@@ -278,7 +278,7 @@ beforeEach(() => {
 
   mockStartOnboardingAnalysis.mockResolvedValue({
     analysisId: "analysis-1",
-    status: "crawling",
+    status: "mapping",
     warnings: [],
   })
   mockPollOnboardingAnalysis.mockResolvedValue({
@@ -389,6 +389,8 @@ beforeEach(() => {
     needsOnboarding: false,
     user: makeUser(),
   })
+
+  vi.useRealTimers()
 })
 
 describe("Onboarding wizard", () => {
@@ -566,7 +568,7 @@ describe("Onboarding wizard", () => {
     mockPollOnboardingAnalysis
       .mockResolvedValueOnce({
         analysisId: "analysis-1",
-        status: "crawling",
+        status: "planning",
         warnings: [],
       })
       .mockResolvedValueOnce({
@@ -589,7 +591,7 @@ describe("Onboarding wizard", () => {
     await waitFor(
       () => expect(mockPollOnboardingAnalysis).toHaveBeenCalledTimes(2),
       {
-        timeout: 2000,
+        timeout: 6000,
       }
     )
 
@@ -614,10 +616,10 @@ describe("Onboarding wizard", () => {
     mockPollOnboardingAnalysis.mockImplementation(async () => {
       pollCount += 1
 
-      if (pollCount <= 22) {
+      if (pollCount <= 3) {
         return {
           analysisId: "analysis-1",
-          status: "crawling" as const,
+          status: "scraping" as const,
           warnings: [],
         }
       }
@@ -636,23 +638,23 @@ describe("Onboarding wizard", () => {
     await user.type(screen.getByLabelText("Company name"), "Acme")
     await user.click(screen.getByRole("button", { name: "Continue" }))
 
-    await waitFor(
-      () => expect(mockPollOnboardingAnalysis).toHaveBeenCalledTimes(23),
-      {
-        timeout: 10000,
-      }
+    await waitFor(() =>
+      expect(mockPollOnboardingAnalysis).toHaveBeenCalledTimes(1)
     )
+    await waitFor(() =>
+      expect(mockPollOnboardingAnalysis).toHaveBeenCalledTimes(4)
+    , {
+      timeout: 12000,
+    })
 
     expect(
       await screen.findByRole("heading", { name: "Describe what you do" })
     ).toBeInTheDocument()
     expect(
-      screen.queryByText(
-        "Analysis timed out before the crawl finished. Continue manually."
-      )
+      screen.queryByText("Analysis completed without usable results. Continue manually.")
     ).not.toBeInTheDocument()
     },
-    15000
+    20000
   )
 
   it("blocks invalid step 2 submissions", async () => {
@@ -972,12 +974,12 @@ describe("Onboarding wizard", () => {
     mockStartOnboardingAnalysis
       .mockResolvedValueOnce({
         analysisId: "analysis-1",
-        status: "crawling",
+        status: "mapping",
         warnings: [],
       })
       .mockResolvedValueOnce({
         analysisId: "analysis-2",
-        status: "crawling",
+        status: "mapping",
         warnings: [],
       })
     mockPollOnboardingAnalysis

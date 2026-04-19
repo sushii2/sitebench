@@ -96,8 +96,8 @@ type ValidationState = {
 }
 
 type AnalysisUiState = "idle" | "starting" | "polling" | "completed" | "failed"
-const ANALYSIS_POLL_INTERVAL_MS = 250
-const ANALYSIS_MAX_POLL_DURATION_MS = 5 * 60 * 1000
+const ANALYSIS_INITIAL_POLL_INTERVAL_MS = 1600
+const ANALYSIS_MAX_POLL_INTERVAL_MS = 5000
 
 const promptVariantOrder: ReadonlyArray<
   NonNullable<OnboardingPromptDraft["variantType"]>
@@ -115,15 +115,15 @@ const promptVariantOrder: ReadonlyArray<
 ]
 
 const analysisPhaseLabel: Record<string, string> = {
-  clustering: "Clustering intents into topics",
+  classifying: "Classifying the homepage",
   completed: "Analysis complete",
-  crawling: "Crawling high-signal pages",
-  extracting: "Extracting structured page context",
+  competitors: "Scoring likely competitors",
   failed: "Analysis failed",
   mapping: "Mapping the website",
-  polling: "Waiting for analysis results",
-  prompting: "Generating prompt variants",
-  scoring: "Ranking prompts for quality",
+  planning: "Planning the critical pages",
+  profiling: "Building the brand profile",
+  prompting: "Generating topics and prompts",
+  scraping: "Scraping selected pages",
 }
 
 const stepMeta = [
@@ -409,6 +409,7 @@ export function OnboardingWizard({
   const [analysisId, setAnalysisId] = React.useState<string | null>(null)
   const [analysisState, setAnalysisState] = React.useState<AnalysisUiState>("idle")
   const [analysisPhase, setAnalysisPhase] = React.useState<string | null>(null)
+  const [, startAnalysisTransition] = React.useTransition()
   const [currentStep, setCurrentStep] = React.useState<StepKey>(() =>
     getInitialStep(brand)
   )
@@ -523,23 +524,25 @@ export function OnboardingWizard({
         warnings: result.warnings,
       })
 
-      setDescription(result.description)
-      setTopics(buildGeneratedTopicDrafts(result.topics).map(sortTopicDraft))
-      const nextCompetitors = buildCompetitorRows(result.competitors)
-      setCompetitors(nextCompetitors)
-      setEditingCompetitorIds(
-        new Set(
-          nextCompetitors
-            .filter((row) => !row.name.trim() && !row.website.trim())
-            .map((row) => row.id)
+      startAnalysisTransition(() => {
+        setDescription(result.description)
+        setTopics(buildGeneratedTopicDrafts(result.topics).map(sortTopicDraft))
+        const nextCompetitors = buildCompetitorRows(result.competitors)
+        setCompetitors(nextCompetitors)
+        setEditingCompetitorIds(
+          new Set(
+            nextCompetitors
+              .filter((row) => !row.name.trim() && !row.website.trim())
+              .map((row) => row.id)
+          )
         )
-      )
-      setPrefillNotice(formatWarnings(nextWarnings))
-      setAnalysisState("completed")
-      setAnalysisPhase("completed")
-      setCurrentStep(2)
+        setPrefillNotice(formatWarnings(nextWarnings))
+        setAnalysisState("completed")
+        setAnalysisPhase("completed")
+        setCurrentStep(2)
+      })
     },
-    []
+    [startAnalysisTransition]
   )
 
   const ensureAnalysisRunId = React.useCallback(async () => {
@@ -585,18 +588,6 @@ export function OnboardingWizard({
 
         try {
           analysisPollCountRef.current += 1
-
-          const startedAt = analysisPollingStartedAtRef.current ?? Date.now()
-          const elapsedMs = Date.now() - startedAt
-
-          if (elapsedMs > ANALYSIS_MAX_POLL_DURATION_MS) {
-            setAnalysisState("failed")
-            setAnalysisPhase("failed")
-            setPrefillNotice(
-              "Analysis timed out before the crawl finished. Continue manually."
-            )
-            return
-          }
 
           const result = await pollOnboardingAnalysis(analysisId)
 
@@ -647,12 +638,19 @@ export function OnboardingWizard({
         }
 
         if (!isCancelled && shouldScheduleNextPoll) {
-          schedulePoll(ANALYSIS_POLL_INTERVAL_MS)
+          schedulePoll(
+            delayMs <= 0
+              ? ANALYSIS_INITIAL_POLL_INTERVAL_MS
+              : Math.min(
+                  Math.round(delayMs * 1.25),
+                  ANALYSIS_MAX_POLL_INTERVAL_MS
+                )
+          )
         }
       }, delayMs)
     }
 
-    schedulePoll(ANALYSIS_POLL_INTERVAL_MS)
+    schedulePoll(0)
 
     return () => {
       isCancelled = true
@@ -1494,7 +1492,7 @@ export function OnboardingWizard({
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {analysisState === "failed"
-                            ? "We could not finish the crawl and scoring flow. You can continue manually from the next step."
+                            ? "We could not finish the workflow-backed analysis. You can continue manually from the next step."
                             : analysisState === "completed"
                               ? "Your description, competitors, topics, and prompt variants are ready to review."
                               : analysisPhase

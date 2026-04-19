@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
 
 import {
-  advanceOnboardingAnalysisRun,
   authenticateOnboardingRequest,
   createAuthenticatedOnboardingClient,
+  loadOnboardingAnalysisRunStatus,
 } from "@/lib/onboarding"
 import {
   logOnboardingAnalysisError,
@@ -49,7 +49,7 @@ export async function GET(
     })
 
     const client = createAuthenticatedOnboardingClient(authorization)
-    const analysis = await advanceOnboardingAnalysisRun(client, analysisId)
+    const analysis = await loadOnboardingAnalysisRunStatus(client, analysisId)
 
     logOnboardingAnalysisEvent("Analysis poll route completed", {
       analysisId,
