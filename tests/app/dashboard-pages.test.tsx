@@ -7,6 +7,22 @@ vi.mock("@/components/auth-provider", () => ({
   useAuth: () => mockUseAuth(),
 }))
 
+vi.mock("@/lib/insforge/browser-client", () => ({
+  getInsforgeBrowserClient: () => ({}),
+}))
+
+vi.mock("@/lib/logo-dev/config", () => ({
+  resolveLogoDevPublicConfig: () => ({ publishableKey: "pk_test" }),
+}))
+
+vi.mock("@/lib/project-topics/repository", () => ({
+  loadProjectTopics: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock("@/lib/tracked-prompts/repository", () => ({
+  loadTrackedPromptsByProject: vi.fn().mockResolvedValue([]),
+}))
+
 const dashboardPages = [
   { heading: "Home", modulePath: "@/app/dashboard/page" },
   { heading: "Prompts", modulePath: "@/app/dashboard/prompts/page" },
