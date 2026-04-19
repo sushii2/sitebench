@@ -24,6 +24,9 @@ import type {
 } from "@/workflows/onboarding-analysis/types"
 
 function extractCompetitorsFromPages(input: ProfiledState): OnboardingCompetitor[] {
+  const extractedSignals = input.pageSignals.flatMap(
+    (page) => page.competitorCandidates
+  )
   const matches = input.scrapedPages.flatMap((page) => {
     const title = `${page.title ?? ""} ${page.markdown.slice(0, 800)}`
     const candidates = [
@@ -34,15 +37,35 @@ function extractCompetitorsFromPages(input: ProfiledState): OnboardingCompetitor
     return candidates.map((candidate) => normalizeWhitespace(candidate[1] ?? ""))
   })
 
-  return uniqueWarnings(matches)
-    .filter(
-      (name) => name.toLowerCase() !== input.companyName.trim().toLowerCase()
-    )
-    .slice(0, 12)
-    .map((name) => ({
-      name,
-      website: `https://${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.com`,
-    }))
+  return dedupeCompetitors([
+    ...extractedSignals,
+    ...uniqueWarnings(matches)
+      .filter(
+        (name) => name.toLowerCase() !== input.companyName.trim().toLowerCase()
+      )
+      .slice(0, 12)
+      .map((name) => ({
+        name,
+        website: `https://${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.com`,
+      })),
+  ])
+}
+
+function dedupeCompetitors(competitors: OnboardingCompetitor[]) {
+  const seen = new Set<string>()
+
+  return competitors.filter((competitor) => {
+    const key = `${competitor.name.trim().toLowerCase()}|${competitor.website
+      .trim()
+      .toLowerCase()}`
+
+    if (!competitor.name.trim() || !competitor.website.trim() || seen.has(key)) {
+      return false
+    }
+
+    seen.add(key)
+    return true
+  })
 }
 
 export async function generateCompetitorCandidatesStep(

@@ -1,15 +1,8 @@
-import { generateText } from "ai"
-
-import {
-  buildGatewayStructuredOutputSystemPrompt,
-  createGatewayStructuredObjectOutput,
-} from "@/lib/ai/gateway-structured-output"
-import { normalizeBrandTopics } from "@/lib/brands"
-import { getLanguageModel } from "@/lib/ai/provider-config"
+import { normalizeWebsite } from "@/lib/brands"
 import { generateTopicPromptCollection } from "@/lib/onboarding/topic-prompt-generator"
-import {
-  onboardingGatewayTopicClusterSchema,
-  onboardingTopicClusterSchema,
+import type {
+  OnboardingCatalog,
+  OnboardingTopicPromptResponse,
 } from "@/lib/onboarding/types"
 
 import {
@@ -24,32 +17,14 @@ import type {
   PromptedState,
 } from "@/workflows/onboarding-analysis/types"
 
-function toClusterId(topicName: string) {
-  return topicName
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
-}
-
-function buildFallbackTopics(input: CompetitorState) {
-  const topicNames = normalizeBrandTopics([
-    input.brandProfile.primarySubcategory,
-    input.brandProfile.primaryCategory,
-    ...input.brandProfile.categories,
-    ...input.brandProfile.jobsToBeDone,
-    ...input.brandProfile.products,
-  ]).slice(0, 7)
-
-  return onboardingTopicClusterSchema.parse({
-    topics: topicNames.map((topicName) => ({
-      clusterId: toClusterId(topicName) || "topic_cluster",
-      intentSummary: `Buyer evaluation of ${topicName}`,
-      source: "ai_suggested",
-      sourceUrls: input.scrapedPages.slice(0, 2).map((page) => page.url),
-      topicName,
-    })),
-  }).topics
+function buildEmptyCatalog(input: CompetitorState): OnboardingCatalog {
+  return {
+    brand: input.companyName,
+    businessType: input.brandProfile.siteArchetype,
+    domain: new URL(normalizeWebsite(input.website)).hostname.replace(/^www\./i, ""),
+    primaryCategory: input.brandProfile.primaryCategory,
+    topics: [],
+  }
 }
 
 export async function generateTopicsAndPromptsStep(
@@ -59,70 +34,49 @@ export async function generateTopicsAndPromptsStep(
 
   const startedAt = Date.now()
   let warnings = [...input.warnings]
-  let topics = buildFallbackTopics(input)
+  let promptCollection: OnboardingTopicPromptResponse = {
+    catalog: buildEmptyCatalog(input),
+    topics: [],
+    warnings: [],
+  }
 
   try {
-    const { output } = await generateText({
-      model: getLanguageModel("openai", {
-        capability: "structuredOutput",
+    promptCollection = await generateTopicPromptCollection({
+      analysisRunId: input.analysisId,
+      brandProfile: input.brandProfile,
+      companyName: input.companyName,
+      competitors: input.competitors,
+      description: input.brandProfile.detailedDescription,
+      scrapedPages: input.scrapedPages.map((page) => {
+        const pageSignal = input.pageSignals.find((signal) => signal.url === page.url)
+
+        return {
+          competitorCandidates: pageSignal?.competitorCandidates ?? [],
+          contentSnapshot: page.markdown,
+          entities: pageSignal?.entities ?? [],
+          evidenceSnippets: pageSignal?.evidenceSnippets ?? [],
+          intents: pageSignal?.intents ?? [],
+          pageType: page.pageRole,
+          title: page.title ?? null,
+          url: page.url,
+        }
       }),
-      output: createGatewayStructuredObjectOutput({
-        description:
-          "Structured onboarding topic clusters with stable cluster IDs, intent summaries, sources, and source URLs.",
-        name: "onboarding_topic_clusters",
-        schema: onboardingGatewayTopicClusterSchema,
-      }),
-      prompt: [
-        `Company: ${input.companyName}`,
-        `Website: ${input.website}`,
-        `Archetype: ${input.brandProfile.siteArchetype}`,
-        `Primary category: ${input.brandProfile.primaryCategory}`,
-        `Primary subcategory: ${input.brandProfile.primarySubcategory}`,
-        `Target customers: ${input.brandProfile.targetCustomers.join(", ")}`,
-        `Jobs to be done: ${input.brandProfile.jobsToBeDone.join(", ")}`,
-        `Products: ${input.brandProfile.products.join(", ")}`,
-        `Evidence URLs: ${input.scrapedPages.slice(0, 10).map((page) => page.url).join(", ")}`,
-      ].join("\n"),
-      system: buildGatewayStructuredOutputSystemPrompt([
-        "Generate 5 to 7 buyer-facing onboarding topic clusters grounded in the brand profile.",
-        "Use categories, personas, jobs to be done, pricing, and product families.",
-        "clusterId must be a stable lowercase snake_case identifier derived from topicName.",
-        "intentSummary must explain the buyer question or evaluation intent in one sentence.",
-        "sourceUrls must contain 1 to 3 of the most relevant evidence URLs from the supplied list.",
-        "topicName should be concise, non-branded when possible, and useful as a reusable monitoring cluster label.",
-        "Return only the schema fields.",
-      ]),
-      temperature: 0,
+      website: input.website,
     })
-
-    const generatedTopics = onboardingTopicClusterSchema.parse(output).topics
-
-    if (generatedTopics.length > 0) {
-      topics = generatedTopics
-    }
   } catch (error) {
     warnings = uniqueWarnings([
       ...warnings,
       toErrorWarning(
-        "We could not fully generate topic clusters, so we used a deterministic fallback.",
+        "We could not fully generate the onboarding GEO catalog, so the run stored an empty prompt review for manual follow-up.",
         error
       ),
     ])
-    logStepError("Workflow topic generation failed", error, {
+    logStepError("Workflow GEO catalog generation failed", error, {
       analysisId: input.analysisId,
       website: input.website,
     })
   }
 
-  const promptCollection = await generateTopicPromptCollection({
-    analysisRunId: input.analysisId,
-    brandProfile: input.brandProfile,
-    companyName: input.companyName,
-    competitors: input.competitors,
-    description: input.brandProfile.detailedDescription,
-    topics,
-    website: input.website,
-  })
   const result = {
     brandProfile: {
       ...input.brandProfile,
@@ -132,13 +86,11 @@ export async function generateTopicsAndPromptsStep(
         ...promptCollection.warnings,
       ]),
     },
+    catalog: promptCollection.catalog,
     competitors: input.competitors,
     description: input.brandProfile.detailedDescription,
     topics: promptCollection.topics,
-    warnings: uniqueWarnings([
-      ...warnings,
-      ...promptCollection.warnings,
-    ]),
+    warnings: uniqueWarnings([...warnings, ...promptCollection.warnings]),
   }
 
   await persistRunPhase({

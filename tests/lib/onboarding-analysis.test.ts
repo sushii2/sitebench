@@ -153,8 +153,12 @@ describe("workflow-backed onboarding analysis", () => {
         brandProfile: {
           careers: null,
           categories: ["security automation"],
+          comparisonSets: ["Acme vs Tines"],
+          conversionMoments: ["book a demo"],
           detailedDescription:
             "Acme helps security teams automate investigations and compliance workflows.",
+          differentiators: ["compliance automation"],
+          evidenceUrls: ["https://acme.com/platform"],
           geography: "North America",
           jobsToBeDone: ["automate investigations"],
           keywords: ["security automation"],
@@ -162,14 +166,73 @@ describe("workflow-backed onboarding analysis", () => {
           primaryCategory: "security automation",
           primarySubcategory: "security automation platform",
           products: ["incident response automation"],
+          reputationalQuestions: ["Is Acme secure?"],
+          researchJourneys: ["compare SOAR vendors"],
+          secondaryCategories: ["compliance automation"],
           siteArchetype: "saas",
+          targetAudiences: ["security leaders"],
           targetCustomers: ["security teams"],
           warnings: [],
+        },
+        catalog: {
+          brand: "Acme",
+          businessType: "saas",
+          domain: "acme.com",
+          primaryCategory: "security automation",
+          topics: [
+            {
+              description: "Buyer-facing vendor evaluation prompts.",
+              id: "security-automation-platforms",
+              name: "security automation platforms",
+              prompts: [
+                {
+                  id: "security-automation-platforms-1",
+                  intent: "recommendation",
+                  text: "What security automation platforms are best for enterprise SOC teams?",
+                },
+              ],
+            },
+          ],
         },
         competitors: [],
         description:
           "Acme helps security teams automate investigations and compliance workflows.",
-        topics: [],
+        topics: [
+          {
+            clusterId: "security-automation-platforms",
+            intentSummary: "GEO coverage for security automation platforms",
+            prompts: [
+              {
+                addedVia: "ai_suggested",
+                generationMetadata: {
+                  brand: "Acme",
+                  businessType: "saas",
+                  domain: "acme.com",
+                  evidenceUrls: [],
+                  primaryCategory: "security automation",
+                  sourceUrls: ["https://acme.com/platform"],
+                  topicDescription: "Buyer-facing vendor evaluation prompts.",
+                  topicId: "security-automation-platforms",
+                  topicName: "security automation platforms",
+                },
+                intent: "recommendation",
+                promptText:
+                  "What security automation platforms are best for enterprise SOC teams?",
+                scoreMetadata: {
+                  generation: {
+                    primaryCategory: "security automation",
+                  },
+                },
+                scoreStatus: "unscored",
+                sourceAnalysisRunId: "analysis-1",
+              },
+            ],
+            source: "ai_suggested",
+            sourceUrls: ["https://acme.com/platform"],
+            topicDescription: "Buyer-facing vendor evaluation prompts.",
+            topicName: "security automation platforms",
+          },
+        ],
         warnings: [],
       },
       selected_url_count: 4,
@@ -197,6 +260,9 @@ describe("workflow-backed onboarding analysis", () => {
         brandProfile: {
           primaryCategory: "security automation",
           siteArchetype: "saas",
+        },
+        catalog: {
+          primaryCategory: "security automation",
         },
       },
     })

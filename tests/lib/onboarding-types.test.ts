@@ -3,15 +3,19 @@ import { describe, expect, it } from "vitest"
 
 import {
   onboardingBrandProfileSchema,
+  onboardingCatalogSchema,
   onboardingCompetitorRecoverySchema,
   onboardingCompetitorScoringPayloadSchema,
   onboardingCriticalPageSelectionSchema,
   onboardingGatewayBrandProfileSchema,
+  onboardingGatewayCatalogSchema,
   onboardingGatewayCriticalPageSelectionSchema,
   onboardingGatewayHomepageClassificationSchema,
   onboardingGatewayTopicClusterSchema,
   onboardingHomepageClassificationSchema,
+  onboardingPromptIntentSchema,
   onboardingPromptFormulaPayloadSchema,
+  onboardingTopicPromptRequestSchema,
 } from "@/lib/onboarding/types"
 
 function collectGatewaySchemaIssues(
@@ -122,8 +126,18 @@ describe("onboarding structured output schemas", () => {
     const result = onboardingBrandProfileSchema.safeParse({
       careers: "Hiring in logistics and retail operations across the US.",
       categories: ["running shoes", "athletic apparel"],
+      comparisonSets: [
+        "trail running shoes vs hiking shoes",
+        "brooks vs hoka",
+      ],
+      conversionMoments: ["buy trail shoes for a spring race"],
       detailedDescription:
         "Acme sells running footwear and apparel for runners who compare fit, durability, and price.",
+      differentiators: ["wide-fit assortment", "terrain-specific filters"],
+      evidenceUrls: [
+        "https://acme.com/collections/trail-running",
+        "https://acme.com/pages/shipping",
+      ],
       geography: "United States and Canada",
       jobsToBeDone: ["find running shoes by terrain", "shop by fit"],
       keywords: ["running shoes", "trail shoes", "wide fit"],
@@ -131,12 +145,82 @@ describe("onboarding structured output schemas", () => {
       primaryCategory: "running shoes",
       primarySubcategory: "trail running shoes",
       products: ["trail shoes", "road shoes", "running apparel"],
+      reputationalQuestions: ["Is Acme worth the price for trail runners?"],
+      researchJourneys: [
+        "compare trail running shoes by terrain and fit",
+      ],
+      secondaryCategories: ["athletic apparel"],
       siteArchetype: "ecommerce",
+      targetAudiences: ["gift buyers"],
       targetCustomers: ["runners", "gift buyers"],
       warnings: [],
     })
 
     expect(result.success).toBe(true)
+  })
+
+  it("accepts the canonical GEO prompt catalog schema", () => {
+    const result = onboardingCatalogSchema.safeParse({
+      brand: "Acme",
+      businessType: "services",
+      domain: "acme.com",
+      primaryCategory: "fractional CFO services",
+      topics: [
+        {
+          description:
+            "Commercial and evaluation queries for outsourced finance leadership.",
+          id: "fractional-cfo-services",
+          name: "fractional cfo services",
+          prompts: [
+            {
+              id: "fractional-cfo-services-1",
+              intent: "recommendation",
+              text: "What are the best fractional CFO services for SaaS startups preparing for a Series A?",
+            },
+            {
+              id: "fractional-cfo-services-2",
+              intent: "constraint_based",
+              text: "Which fractional CFO firms help B2B SaaS teams clean up board reporting in under 60 days?",
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  it("defaults topic prompt refresh requests to full catalog refresh mode", () => {
+    const result = onboardingTopicPromptRequestSchema.parse({
+      analysisRunId: "analysis-1",
+      companyName: "Acme",
+      competitors: [],
+      description: "Acme provides finance support for SaaS teams.",
+      website: "https://acme.com",
+    })
+
+    expect(result).toMatchObject({
+      excludedPromptTexts: [],
+      excludedTopicNames: [],
+      mode: "full_refresh",
+      topics: [],
+    })
+  })
+
+  it("accepts the canonical prompt intent set", () => {
+    for (const value of [
+      "brand_aware",
+      "informational",
+      "comparison",
+      "recommendation",
+      "constraint_based",
+      "transactional",
+      "local",
+      "reputational",
+      "follow_up",
+    ]) {
+      expect(onboardingPromptIntentSchema.safeParse(value).success).toBe(true)
+    }
   })
 
   it("accepts competitor scoring payloads with weighted factors", () => {
@@ -186,6 +270,7 @@ describe("onboarding structured output schemas", () => {
   it("exports gateway-safe schemas that require every object property", async () => {
     const gatewaySchemas = {
       onboardingGatewayBrandProfileSchema,
+      onboardingGatewayCatalogSchema,
       onboardingGatewayCriticalPageSelectionSchema,
       onboardingGatewayHomepageClassificationSchema,
       onboardingGatewayTopicClusterSchema,
