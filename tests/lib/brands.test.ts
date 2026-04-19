@@ -743,9 +743,17 @@ describe("brand helpers", () => {
       process.cwd(),
       "db/migrations/0004_onboarding_site_analysis.sql"
     )
+    const onboardingWorkflowMigrationPath = resolve(
+      process.cwd(),
+      "db/migrations/0005_onboarding_workflow_analysis.sql"
+    )
     const dropMigration = readFileSync(dropMigrationPath, "utf8")
     const onboardingAnalysisMigration = readFileSync(
       onboardingAnalysisMigrationPath,
+      "utf8"
+    )
+    const onboardingWorkflowMigration = readFileSync(
+      onboardingWorkflowMigrationPath,
       "utf8"
     )
 
@@ -755,6 +763,12 @@ describe("brand helpers", () => {
     expect(onboardingAnalysisMigration).toContain("CREATE TABLE site_crawl_pages")
     expect(onboardingAnalysisMigration).toContain(
       "ADD COLUMN IF NOT EXISTS variant_type"
+    )
+    expect(onboardingWorkflowMigration).toContain(
+      "CREATE TABLE IF NOT EXISTS site_crawl_mapped_pages"
+    )
+    expect(onboardingWorkflowMigration).toContain(
+      "ADD COLUMN IF NOT EXISTS workflow_run_id"
     )
 
     for (const filePath of [
@@ -767,6 +781,7 @@ describe("brand helpers", () => {
       "lib/prompt-market-metrics/types.ts",
       "lib/tracked-prompts/types.ts",
       "lib/site-crawl-runs/types.ts",
+      "lib/site-crawl-mapped-pages/types.ts",
       "lib/site-crawl-pages/types.ts",
       "lib/prompt-runs/types.ts",
       "lib/prompt-run-responses/types.ts",

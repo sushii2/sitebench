@@ -19,13 +19,19 @@ const mockGetLanguageModel = vi.fn(
   })
 )
 
-vi.mock("ai", () => ({
-  Output: {
-    object: ({ schema }: { schema: unknown }) => ({ schema }),
-  },
-  generateText: mockGenerateText,
-  stepCountIs: mockStepCountIs,
-}))
+vi.mock("ai", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("ai")>()
+
+  return {
+    ...actual,
+    Output: {
+      ...actual.Output,
+      object: (config: Record<string, unknown>) => config,
+    },
+    generateText: mockGenerateText,
+    stepCountIs: mockStepCountIs,
+  }
+})
 
 vi.mock("@/lib/ai/provider-config", () => ({
   getGatewayTools: mockGetGatewayTools,
@@ -114,8 +120,18 @@ describe("normalizeBrandOnboarding", () => {
       "Do not treat customers, partners, integrations, investors, marketplaces, publishers, agencies, or adjacent tools as competitors"
     )
     expect(tierOneCall[0].system).toContain(
+      "AI Gateway structured-output contract"
+    )
+    expect(tierOneCall[0].system).toContain(
+      "Never omit a schema key."
+    )
+    expect(tierOneCall[0].system).toContain(
       "IMPORTANT: Principles: Validate outcomes, iterate if needed, efficiency."
     )
+    expect(tierOneCall[0].output).toMatchObject({
+      description: expect.stringContaining("homepage onboarding synthesis"),
+      name: "onboarding_brand_suggestion",
+    })
     expect(mockGetLanguageModel).toHaveBeenNthCalledWith(1, "openai", {
       capability: "structuredOutput",
     })
@@ -142,6 +158,13 @@ describe("normalizeBrandOnboarding", () => {
     })
     expect(tierTwoCall[0].prompt).toContain("Tier 1 description")
     expect(tierTwoCall[0].prompt).toContain("Tier 1 topics")
+    expect(tierTwoCall[0].system).toContain(
+      "AI Gateway structured-output contract"
+    )
+    expect(tierTwoCall[0].output).toMatchObject({
+      description: expect.stringContaining("direct competitor recovery"),
+      name: "onboarding_competitor_recovery",
+    })
     expect(mockGetGatewayTools).toHaveBeenCalledTimes(1)
     expect(mockPerplexitySearch).toHaveBeenCalledWith({
       country: "US",

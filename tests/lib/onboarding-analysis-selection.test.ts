@@ -2,99 +2,88 @@ import { describe, expect, it } from "vitest"
 
 import {
   classifyMappedPage,
-  mergeMappedPages,
-  selectPagesForCrawl,
+  prefilterMappedPages,
 } from "@/lib/onboarding/analysis-selection"
 
 describe("onboarding analysis page selection", () => {
-  it("classifies high-signal marketing pages and excludes low-signal support pages", () => {
+  it("classifies ecommerce taxonomy hubs as category hubs instead of generic product detail pages", () => {
     expect(
-      classifyMappedPage({
-        description: "Compare Acme with other AI visibility platforms.",
-        title: "Acme Alternatives",
-        url: "https://acme.com/alternatives",
-      })
-    ).toMatchObject({
-      included: true,
-      pageType: "comparison",
-    })
-
-    expect(
-      classifyMappedPage({
-        description: "API reference",
-        title: "Developer Docs",
-        url: "https://acme.com/docs/api",
-      })
-    ).toMatchObject({
-      included: false,
-      pageType: "excluded",
-    })
-
-    expect(
-      classifyMappedPage({
-        description: "Browse the latest arrivals and best sellers.",
-        title: "Shop",
-        url: "https://acme.com/shop",
-      })
-    ).toMatchObject({
-      included: true,
-      pageType: "product",
-      selectionReason: "Catalog or collection hub page",
-    })
-
-    expect(
-      classifyMappedPage({
-        description: "Your basket",
-        title: "Cart",
-        url: "https://acme.com/cart",
-      })
-    ).toMatchObject({
-      included: false,
-      pageType: "excluded",
-    })
-  })
-
-  it("prioritizes ecommerce collection hubs above individual product detail pages", () => {
-    const collection = classifyMappedPage({
-      description: "Shop all running shoes",
-      title: "Running Shoes Collection",
-      url: "https://acme.com/collections/running-shoes",
-    })
-    const productDetail = classifyMappedPage({
-      description: "Carbon running shoe",
-      title: "Velocity Carbon",
-      url: "https://acme.com/products/velocity-carbon",
-    })
-
-    expect(collection.pageType).toBe("product")
-    expect(productDetail.pageType).toBe("product")
-    expect(collection.selectionScore).toBeGreaterThan(productDetail.selectionScore)
-  })
-
-  it("dedupes mapped pages by canonical url", () => {
-    const result = mergeMappedPages([
-      [
+      classifyMappedPage(
         {
-          description: "Pricing overview",
-          title: "Pricing",
-          url: "https://acme.com/pricing",
+          description: "Shop the latest trail, road, and race shoes.",
+          title: "Women's Running Shoes",
+          url: "https://acme.com/women/shoes",
         },
-      ],
-      [
         {
-          description: "Pricing overview duplicate",
-          title: "Pricing",
-          url: "https://acme.com/pricing",
-        },
-      ],
-    ])
+          rootUrl: "https://acme.com",
+          siteArchetype: "ecommerce",
+        }
+      )
+    ).toMatchObject({
+      candidateBucket: "category_hub",
+      included: true,
+      pageRole: "category_hub",
+    })
 
-    expect(result).toHaveLength(1)
-    expect(result[0]?.url).toBe("https://acme.com/pricing")
+    expect(
+      classifyMappedPage(
+        {
+          description: "Carbon-plated trail running shoe.",
+          title: "Velocity X",
+          url: "https://acme.com/products/velocity-x",
+        },
+        {
+          rootUrl: "https://acme.com",
+          siteArchetype: "ecommerce",
+        }
+      )
+    ).toMatchObject({
+      candidateBucket: "product_detail",
+      included: true,
+      pageRole: "other",
+    })
   })
 
-  it("selects crawl pages with quotas across homepage, product, pricing, comparison, and blog", () => {
-    const result = selectPagesForCrawl(
+  it("treats SaaS platform and solution pages as product-equivalent hubs", () => {
+    expect(
+      classifyMappedPage(
+        {
+          description: "Platform overview for security teams.",
+          title: "Platform",
+          url: "https://acme.com/platform",
+        },
+        {
+          rootUrl: "https://acme.com",
+          siteArchetype: "saas",
+        }
+      )
+    ).toMatchObject({
+      candidateBucket: "product_hub",
+      included: true,
+      pageRole: "product_hub",
+    })
+
+    expect(
+      classifyMappedPage(
+        {
+          description: "Connect Acme with your data warehouse.",
+          title: "Integrations",
+          url: "https://acme.com/integrations",
+        },
+        {
+          rootUrl: "https://acme.com",
+          siteArchetype: "saas",
+        }
+      )
+    ).toMatchObject({
+      candidateBucket: "integration_page",
+      included: true,
+      pageRole: "integration_page",
+    })
+  })
+
+  it("keeps ecommerce taxonomy hubs in the prefilter while deprioritizing sku pages", () => {
+    const candidates = prefilterMappedPages(
       [
         {
           description: "Homepage",
@@ -102,56 +91,84 @@ describe("onboarding analysis page selection", () => {
           url: "https://acme.com",
         },
         {
-          description: "Feature page",
+          description: "Shop women's apparel",
+          title: "Women",
+          url: "https://acme.com/women",
+        },
+        {
+          description: "Trail and road running shoes",
+          title: "Shoes",
+          url: "https://acme.com/shoes",
+        },
+        {
+          description: "Seasonal markdowns",
+          title: "Sale",
+          url: "https://acme.com/sale",
+        },
+        {
+          description: "Lightweight race-day shoe",
+          title: "Velocity Carbon",
+          url: "https://acme.com/products/velocity-carbon",
+        },
+      ],
+      {
+        homepageUrl: "https://acme.com",
+        limit: 4,
+        siteArchetype: "ecommerce",
+      }
+    )
+
+    expect(candidates.map((candidate) => candidate.url)).toEqual([
+      "https://acme.com",
+      "https://acme.com/women",
+      "https://acme.com/shoes",
+      "https://acme.com/sale",
+    ])
+    expect(candidates.every((candidate) => candidate.candidateScore > 0)).toBe(true)
+  })
+
+  it("preserves multiple SaaS product families during prefiltering", () => {
+    const candidates = prefilterMappedPages(
+      [
+        {
+          description: "Homepage",
+          title: "Acme",
+          url: "https://acme.com",
+        },
+        {
+          description: "Security platform for enterprise teams",
           title: "Platform",
           url: "https://acme.com/platform",
         },
         {
-          description: "Solutions page",
+          description: "Incident response workflows for ops teams",
           title: "Solutions",
-          url: "https://acme.com/solutions",
+          url: "https://acme.com/solutions/incident-response",
         },
         {
-          description: "Pricing page",
-          title: "Pricing",
-          url: "https://acme.com/pricing",
+          description: "Compliance automation for audit teams",
+          title: "Solutions",
+          url: "https://acme.com/solutions/compliance",
         },
         {
-          description: "Competitor comparison",
-          title: "Acme vs Profound",
-          url: "https://acme.com/compare/profound",
-        },
-        {
-          description: "Alternative page",
-          title: "Acme alternatives",
-          url: "https://acme.com/alternatives",
-        },
-        {
-          description: "Blog article",
-          title: "How to measure AI visibility",
-          url: "https://acme.com/blog/measure-ai-visibility",
-        },
-        {
-          description: "Resource article",
-          title: "What is answer engine optimization?",
-          url: "https://acme.com/blog/answer-engine-optimization",
+          description: "SSO and data warehouse connectors",
+          title: "Integrations",
+          url: "https://acme.com/integrations",
         },
       ],
       {
-        maxPages: 10,
-        minPages: 6,
+        homepageUrl: "https://acme.com",
+        limit: 5,
+        siteArchetype: "multi_product",
       }
     )
 
-    expect(result.map((page) => page.pageType)).toEqual([
-      "homepage",
-      "product",
-      "product",
-      "pricing",
-      "comparison",
-      "comparison",
-      "blog",
-      "blog",
+    expect(candidates.map((candidate) => candidate.url)).toEqual([
+      "https://acme.com",
+      "https://acme.com/platform",
+      "https://acme.com/solutions/incident-response",
+      "https://acme.com/solutions/compliance",
+      "https://acme.com/integrations",
     ])
   })
 })

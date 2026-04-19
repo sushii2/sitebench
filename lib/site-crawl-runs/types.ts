@@ -2,21 +2,24 @@ export type SiteCrawlRunTriggerType = "onboarding"
 
 export type SiteCrawlRunStatus =
   | "mapping"
-  | "crawling"
-  | "extracting"
-  | "clustering"
+  | "classifying"
+  | "planning"
+  | "scraping"
+  | "profiling"
+  | "competitors"
   | "prompting"
-  | "scoring"
   | "completed"
   | "failed"
 
 export interface SiteCrawlRun {
   id: string
+  analysis_version: number
   project_id: string
   trigger_type: SiteCrawlRunTriggerType
   status: SiteCrawlRunStatus
   firecrawl_job_ids: string[]
   selected_url_count: number
+  workflow_run_id: string | null
   warnings: string[]
   result_json: Record<string, unknown> | null
   error_message: string | null

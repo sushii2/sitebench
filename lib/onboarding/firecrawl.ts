@@ -51,17 +51,17 @@ function normalizePageUrl(url: string) {
 export async function mapWebsiteUrls(
   website: string,
   options?: {
-    search?: string
+    limit?: number
   }
 ): Promise<FirecrawlMappedLink[]> {
   const normalizedWebsite = normalizeWebsite(website)
   const result = await getFirecrawlClient().map(normalizedWebsite, {
     ignoreQueryParameters: true,
+    limit: options?.limit ?? 500,
     location: {
       country: "US",
       languages: ["en-US"],
     },
-    search: options?.search,
     sitemap: "include",
   })
 
@@ -73,6 +73,25 @@ export async function mapWebsiteUrls(
       url: normalizePageUrl(link.url),
     }))
     .filter((link) => Boolean(link.url))
+}
+
+export async function batchScrapePages(urls: string[]) {
+  if (urls.length === 0) {
+    return []
+  }
+
+  const job = await getFirecrawlClient().batchScrape(urls, {
+    ignoreInvalidURLs: true,
+    maxConcurrency: 4,
+    options: {
+      formats: ["markdown", "html"],
+      onlyMainContent: true,
+    },
+    pollInterval: 1,
+    timeout: 90,
+  })
+
+  return toFirecrawlDocuments(job.data ?? [])
 }
 
 export async function startOnboardingCrawl(input: {

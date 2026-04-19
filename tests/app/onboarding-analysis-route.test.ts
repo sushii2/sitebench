@@ -43,7 +43,7 @@ describe("POST /api/onboarding/analysis", () => {
     })
     mockStartOnboardingAnalysisRun.mockResolvedValue({
       analysisId: "analysis-1",
-      status: "crawling",
+      status: "mapping",
       warnings: [],
     })
   })
@@ -109,7 +109,7 @@ describe("POST /api/onboarding/analysis", () => {
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toEqual({
       analysisId: "analysis-1",
-      status: "crawling",
+      status: "mapping",
       warnings: [],
     })
     expect(mockCreateAuthenticatedOnboardingClient).toHaveBeenCalledWith(
@@ -119,22 +119,23 @@ describe("POST /api/onboarding/analysis", () => {
       "Bearer token-123"
     )
     expect(mockStartOnboardingAnalysisRun).toHaveBeenCalledWith(
-      expect.objectContaining({
+      {
         auth: {},
         database: {},
-      }),
+      },
       {
         companyName: "Acme",
         projectId: "project-1",
         website: "https://acme.com",
-      }
+      },
+      "Bearer token-123"
     )
   })
 
   it("returns 500 with the migration error when analysis tables are unavailable", async () => {
     mockAssertOnboardingAnalysisTablesAvailable.mockRejectedValue(
       new Error(
-        "The onboarding analysis tables are missing. Apply db/migrations/0004_onboarding_site_analysis.sql before using the crawl flow."
+        "The onboarding analysis tables are missing. Apply db/migrations/0004_onboarding_site_analysis.sql and db/migrations/0005_onboarding_workflow_analysis.sql before using the crawl flow."
       )
     )
 
@@ -157,7 +158,7 @@ describe("POST /api/onboarding/analysis", () => {
     await expect(response.json()).resolves.toEqual({
       error: {
         message:
-          "The onboarding analysis tables are missing. Apply db/migrations/0004_onboarding_site_analysis.sql before using the crawl flow.",
+          "The onboarding analysis tables are missing. Apply db/migrations/0004_onboarding_site_analysis.sql and db/migrations/0005_onboarding_workflow_analysis.sql before using the crawl flow.",
       },
     })
     expect(mockCreateAuthenticatedOnboardingClient).not.toHaveBeenCalled()

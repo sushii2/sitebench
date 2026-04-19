@@ -50,7 +50,11 @@ export async function POST(request: Request) {
     await assertOnboardingAnalysisTablesAvailable(authorization)
 
     const client = createAuthenticatedOnboardingClient(authorization)
-    const analysis = await startOnboardingAnalysisRun(client, parsed.data)
+    const analysis = await startOnboardingAnalysisRun(
+      client,
+      parsed.data,
+      authorization
+    )
 
     logOnboardingAnalysisEvent("Analysis start route completed", {
       analysisId: analysis.analysisId,

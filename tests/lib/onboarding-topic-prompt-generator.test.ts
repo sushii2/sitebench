@@ -7,18 +7,19 @@ const mockGetLanguageModel = vi.fn(
     provider: "gateway",
   })
 )
-const mockJsonSchema = vi.fn((schema: unknown) => ({
-  jsonSchema: async () => schema,
-  validate: async (value: unknown) => ({ success: true, value }),
-}))
 
-vi.mock("ai", () => ({
-  Output: {
-    object: ({ schema }: { schema: unknown }) => ({ schema }),
-  },
-  generateText: mockGenerateText,
-  jsonSchema: mockJsonSchema,
-}))
+vi.mock("ai", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("ai")>()
+
+  return {
+    ...actual,
+    Output: {
+      ...actual.Output,
+      object: (config: Record<string, unknown>) => config,
+    },
+    generateText: mockGenerateText,
+  }
+})
 
 vi.mock("@/lib/ai/provider-config", () => ({
   getLanguageModel: mockGetLanguageModel,
@@ -33,49 +34,38 @@ describe("generateTopicPromptCollection", () => {
     vi.resetModules()
     mockGenerateText.mockReset()
     mockGetLanguageModel.mockClear()
-    mockJsonSchema.mockClear()
   })
 
-  it("generates prompts from a structured brand profile instead of deterministic templates", async () => {
+  it("generates prompts from the new goal/category/persona/constraint/context formula", async () => {
     mockGenerateText.mockResolvedValue({
       output: {
         topics: [
           {
             prompts: [
               {
-                brandRelevance: "direct",
-                commercialValue: "high",
-                intentType: "recommendation",
-                likelyCompetitors: ["Scrunch AI", "Peec AI"],
-                persona: "VP of marketing",
+                category: "security automation platform",
+                constraint: "must integrate with Okta and Snowflake without a six-month rollout",
+                context:
+                  "Acme sells security automation products for enterprise security and compliance teams in North America.",
+                goal: "compare leading vendors",
+                persona: "security operations leader",
                 promptText:
-                  "What are the best AI visibility platforms for enterprise marketing teams that need citation tracking and executive reporting?",
-                purchaseStage: "consideration",
-                rationale:
-                  "High-intent vendor evaluation prompt tied to Profound's core workflow.",
-                segment: "enterprise marketing",
-                templateText:
-                  "What are the best {solution_category} for {segment} that need {job_to_be_done}?",
-                variantType: "alternatives",
-              },
-              {
-                brandRelevance: "direct",
-                commercialValue: "high",
-                intentType: "comparison",
-                likelyCompetitors: ["Scrunch AI"],
-                persona: "Head of brand",
-                promptText:
-                  "Profound vs Scrunch AI for tracking brand citations in ChatGPT and Perplexity",
-                purchaseStage: "decision",
-                rationale:
-                  "Direct competitive evaluation prompt around a core product use case.",
-                segment: "enterprise brand teams",
-                templateText:
-                  "{company} vs {competitor_list} for {job_to_be_done}",
+                  "Which security automation platforms should a security operations leader compare when they need Okta and Snowflake integrations without a six-month rollout?",
                 variantType: "comparison",
               },
+              {
+                category: "security automation platform",
+                constraint: "needs clear ROI and implementation confidence",
+                context:
+                  "Acme sells security automation products for enterprise security and compliance teams in North America.",
+                goal: "build a shortlist",
+                persona: "security operations leader",
+                promptText:
+                  "What security automation platforms should a security operations leader shortlist when they need clear ROI and low implementation risk?",
+                variantType: "discovery",
+              },
             ],
-            topicName: "ai visibility platforms",
+            topicName: "security automation platforms",
           },
         ],
       },
@@ -86,49 +76,44 @@ describe("generateTopicPromptCollection", () => {
     const result = await generateTopicPromptCollection({
       analysisRunId: "analysis-1",
       brandProfile: {
-        adjacentCategories: ["brand intelligence"],
-        category: "AI visibility platform",
-        competitors: [
-          { name: "Scrunch AI", website: "https://scrunchai.com" },
-          { name: "Peec AI", website: "https://peec.ai" },
+        careers: "Hiring in security engineering and GTM roles.",
+        categories: ["security automation", "compliance automation"],
+        detailedDescription:
+          "Acme helps enterprise security and compliance teams automate investigations, orchestration, and evidence collection.",
+        geography: "North America",
+        jobsToBeDone: [
+          "automate security investigations",
+          "reduce audit prep effort",
         ],
-        description:
-          "Profound helps enterprise marketing teams understand and improve brand performance in AI discovery experiences.",
-        differentiators: [
-          "citation tracking across answer engines",
-          "executive reporting",
-        ],
-        evidenceUrls: [
-          "https://tryprofound.com/features/answer-engine-insights",
-        ],
-        productCategories: ["AI visibility", "citation tracking"],
-        targetAudiences: ["enterprise marketing teams"],
-        topUseCases: [
-          "track brand citations in ChatGPT",
-          "benchmark AI visibility against competitors",
-        ],
+        keywords: ["SOAR", "security automation", "compliance automation"],
+        pricing: "enterprise SaaS with demo-led sales",
+        primaryCategory: "security automation",
+        primarySubcategory: "security automation platform",
+        products: ["incident response automation", "compliance workflows"],
+        siteArchetype: "saas",
+        targetCustomers: ["security operations leaders", "compliance teams"],
         warnings: [],
       },
-      companyName: "Profound",
+      companyName: "Acme",
       competitors: [
-        { name: "Scrunch AI", website: "https://scrunchai.com" },
-        { name: "Peec AI", website: "https://peec.ai" },
+        { name: "Tines", website: "https://tines.com" },
+        { name: "Torq", website: "https://torq.io" },
       ],
       description:
-        "Profound helps enterprise marketing teams understand and improve brand performance in AI discovery experiences.",
+        "Acme helps enterprise security teams automate investigations and compliance workflows.",
       topics: [
         {
           intentSummary:
-            "Buyer evaluation of AI visibility software for enterprise marketing teams.",
+            "Buyer evaluation of security automation platforms for enterprise teams.",
           source: "ai_suggested",
           sourceUrls: [
-            "https://tryprofound.com/pricing",
-            "https://tryprofound.com/features/answer-engine-insights",
+            "https://acme.com/platform",
+            "https://acme.com/integrations",
           ],
-          topicName: "ai visibility platforms",
+          topicName: "security automation platforms",
         },
       ],
-      website: "https://tryprofound.com",
+      website: "https://acme.com",
     })
 
     expect(mockGetLanguageModel).toHaveBeenCalledWith("openai", {
@@ -136,79 +121,68 @@ describe("generateTopicPromptCollection", () => {
     })
     const generationCall = mockGenerateText.mock.calls[0]?.[0]
     expect(generationCall.system).toContain(
-      "Generate realistic, commercially relevant prompts"
+      "goal + category + persona + constraint + context"
     )
-    expect(generationCall.prompt).toContain("Category: AI visibility platform")
+    expect(generationCall.system).toContain(
+      "AI Gateway structured-output contract"
+    )
+    expect(generationCall.system).toContain("Never omit a schema key.")
+    expect(generationCall.output).toMatchObject({
+      description: expect.stringContaining("topic-specific onboarding prompts"),
+      name: "onboarding_topic_prompt_collection",
+    })
+    expect(generationCall.prompt).toContain("Site archetype: saas")
     expect(generationCall.prompt).toContain(
-      "Top use cases: track brand citations in ChatGPT"
+      "Primary category: security automation"
     )
-    expect(generationCall.prompt).toContain("Topic 1: ai visibility platforms")
+    expect(generationCall.prompt).toContain(
+      "Jobs to be done: automate security investigations"
+    )
+    expect(generationCall.prompt).toContain(
+      "Topic 1: security automation platforms"
+    )
 
     const prompts = result.topics[0]?.prompts ?? []
     expect(prompts).toHaveLength(2)
     expect(prompts[0]?.scoreStatus).toBe("unscored")
-    expect(prompts[0]?.pqsScore).toBeUndefined()
     expect(prompts[0]?.scoreMetadata).toMatchObject({
-      brandRelevance: "direct",
-      commercialValue: "high",
-      intentType: "recommendation",
-      persona: "VP of marketing",
-      purchaseStage: "consideration",
-      segment: "enterprise marketing",
+      category: "security automation platform",
+      constraint:
+        "must integrate with Okta and Snowflake without a six-month rollout",
+      goal: "compare leading vendors",
+      persona: "security operations leader",
+      context: expect.stringContaining("North America"),
     })
-    expect(prompts[0]?.promptText).not.toMatch(/how do teams handle/i)
-    expect(prompts[0]?.promptText).toMatch(/best AI visibility platforms/i)
-    expect(prompts[1]?.promptText).toMatch(/Profound vs Scrunch AI/i)
+    expect(prompts[0]?.promptText).toMatch(/security automation platforms/i)
   })
 
-  it("falls back to a lightweight brand profile when a structured one is not provided", async () => {
-    mockGenerateText.mockResolvedValue({
-      output: {
-        topics: [
-          {
-            prompts: [
-              {
-                brandRelevance: "direct",
-                commercialValue: "medium",
-                intentType: "problem_solving",
-                likelyCompetitors: ["Vercel"],
-                persona: "Engineering manager",
-                promptText:
-                  "How should engineering teams compare frontend hosting platforms for preview deployments and fast rollback?",
-                purchaseStage: "consideration",
-                rationale: "Matches the product's core evaluation flow.",
-                segment: "software teams",
-                templateText:
-                  "How should {segment} compare {solution_category} for {job_to_be_done}?",
-                variantType: "discovery",
-              },
-            ],
-            topicName: "frontend hosting comparisons",
-          },
-        ],
-      },
-    })
+  it("falls back to deterministic prompt templates when structured generation fails", async () => {
+    mockGenerateText.mockRejectedValue(new Error("provider unavailable"))
 
     const { generateTopicPromptCollection } = await loadGeneratorModule()
 
-    await expect(
-      generateTopicPromptCollection({
-        analysisRunId: "analysis-1",
-        companyName: "Acme",
-        competitors: [{ name: "Vercel", website: "https://vercel.com" }],
-        description:
-          "Acme helps engineering teams deploy frontend apps with preview deployments and rollback controls.",
-        topics: [
-          {
-            source: "ai_suggested",
-            topicName: "frontend hosting comparisons",
-          },
-        ],
-        website: "https://acme.com",
-      })
-    ).resolves.toMatchObject({
-      topics: expect.any(Array),
-      warnings: expect.any(Array),
+    const result = await generateTopicPromptCollection({
+      analysisRunId: "analysis-1",
+      companyName: "Acme",
+      competitors: [{ name: "Vercel", website: "https://vercel.com" }],
+      description:
+        "Acme helps engineering teams deploy frontend apps with preview deployments and rollback controls.",
+      topics: [
+        {
+          source: "ai_suggested",
+          topicName: "frontend hosting comparisons",
+        },
+      ],
+      website: "https://acme.com",
     })
+
+    expect(
+      result.topics[0]?.prompts.some((prompt) =>
+        /frontend hosting comparisons/i.test(prompt.promptText)
+      )
+    ).toBe(true)
+    expect(result.warnings).toContain(
+      "We could not fully tailor prompt suggestions, so we used a lighter fallback."
+    )
   })
 })

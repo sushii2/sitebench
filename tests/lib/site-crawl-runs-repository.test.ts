@@ -36,6 +36,7 @@ describe("site crawl run repository", () => {
     })
     const selectBuilder = makeQueryBuilder({
       data: {
+        analysis_version: 2,
         completed_at: null,
         created_at: "2026-01-01T00:00:00.000Z",
         error_message: null,
@@ -48,6 +49,7 @@ describe("site crawl run repository", () => {
         status: "mapping",
         trigger_type: "onboarding",
         updated_at: "2026-01-01T00:00:00.000Z",
+        workflow_run_id: null,
         warnings: [],
       },
       error: null,
