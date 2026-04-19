@@ -82,6 +82,31 @@ function makeBrand(
 
 function makeAnalysisResult(
   overrides: Partial<{
+    catalog: {
+      brand: string
+      businessType: string
+      domain: string
+      primaryCategory: string
+      topics: Array<{
+        description: string
+        id: string
+        name: string
+        prompts: Array<{
+          id: string
+          intent:
+            | "brand_aware"
+            | "comparison"
+            | "constraint_based"
+            | "follow_up"
+            | "informational"
+            | "local"
+            | "recommendation"
+            | "reputational"
+            | "transactional"
+          text: string
+        }>
+      }>
+    }
     competitors: Array<{ name: string; website: string }>
     description: string
     topics: Array<{
@@ -89,6 +114,17 @@ function makeAnalysisResult(
       intentSummary: string
       prompts: Array<{
         addedVia: "ai_suggested" | "user_created"
+        generationMetadata?: Record<string, unknown>
+        intent?:
+          | "brand_aware"
+          | "comparison"
+          | "constraint_based"
+          | "follow_up"
+          | "informational"
+          | "local"
+          | "recommendation"
+          | "reputational"
+          | "transactional"
         pqsRank?: number
         pqsScore?: number
         promptText: string
@@ -106,52 +142,71 @@ function makeAnalysisResult(
       }>
       source: "ai_suggested" | "user_added" | "system_seeded"
       sourceUrls: string[]
+      topicDescription?: string
       topicName: string
     }>
     warnings: string[]
   }> = {}
 ) {
-  return {
-    competitors: [
-      { name: "Competitor 1", website: "https://competitor-1.com" },
-      { name: "Competitor 2", website: "https://competitor-2.com" },
-      { name: "Competitor 3", website: "https://competitor-3.com" },
-      { name: "Competitor 4", website: "https://competitor-4.com" },
-    ],
-    description: "Suggested description",
-    topics: [
+  const topics =
+    overrides.topics ?? [
       {
         clusterId: "cluster-1",
         intentSummary: "Buyer discovery for AI search",
         prompts: [
           {
-            addedVia: "ai_suggested",
+            addedVia: "ai_suggested" as const,
+            generationMetadata: {
+              brand: "Acme",
+              businessType: "saas",
+              domain: "acme.com",
+              evidenceUrls: [],
+              primaryCategory: "ai visibility software",
+              sourceUrls: ["https://acme.com/compare/openai"],
+              topicDescription: "Commercial discovery prompts for AI visibility software.",
+              topicId: "cluster-1",
+              topicName: "ai search",
+            },
+            intent: "recommendation" as const,
             pqsRank: 1,
             pqsScore: 94,
             promptText:
               "Which platforms are best for measuring brand visibility across ChatGPT, Gemini, and Perplexity for brand teams?",
             scoreMetadata: { topicFit: 30 },
-            scoreStatus: "scored",
+            scoreStatus: "scored" as const,
             sourceAnalysisRunId: "analysis-1",
             templateText: "Which platforms are best for {topic}?",
-            variantType: "discovery",
+            variantType: "discovery" as const,
           },
           {
-            addedVia: "ai_suggested",
+            addedVia: "ai_suggested" as const,
+            generationMetadata: {
+              brand: "Acme",
+              businessType: "saas",
+              domain: "acme.com",
+              evidenceUrls: [],
+              primaryCategory: "ai visibility software",
+              sourceUrls: ["https://acme.com/compare/openai"],
+              topicDescription: "Commercial discovery prompts for AI visibility software.",
+              topicId: "cluster-1",
+              topicName: "ai search",
+            },
+            intent: "comparison" as const,
             pqsRank: 2,
             pqsScore: 91,
             promptText:
               "For brand teams evaluating AI visibility platforms, how does Acme compare with Competitor 1 and Competitor 2 on coverage across AI answers, citation tracking, and executive reporting?",
             scoreMetadata: { topicFit: 29 },
-            scoreStatus: "scored",
+            scoreStatus: "scored" as const,
             sourceAnalysisRunId: "analysis-1",
             templateText:
               "How does {company} compare with {competitor_list} on {topic}?",
-            variantType: "comparison",
+            variantType: "comparison" as const,
           },
         ],
-        source: "ai_suggested",
+        source: "ai_suggested" as const,
         sourceUrls: ["https://acme.com/compare/openai"],
+        topicDescription: "Commercial discovery prompts for AI visibility software.",
         topicName: "ai search",
       },
       {
@@ -159,33 +214,36 @@ function makeAnalysisResult(
         intentSummary: "Evaluation of Google AI Mode workflows",
         prompts: [
           {
-            addedVia: "ai_suggested",
+            addedVia: "ai_suggested" as const,
+            intent: "recommendation" as const,
             pqsRank: 1,
             pqsScore: 93,
             promptText:
               "What platforms help brand teams with measuring brand visibility across Google AI Mode, ChatGPT, and Gemini?",
             scoreMetadata: { topicFit: 30 },
-            scoreStatus: "scored",
+            scoreStatus: "scored" as const,
             sourceAnalysisRunId: "analysis-1",
             templateText: "What platforms help with {topic}?",
-            variantType: "discovery",
+            variantType: "discovery" as const,
           },
           {
-            addedVia: "ai_suggested",
+            addedVia: "ai_suggested" as const,
+            intent: "comparison" as const,
             pqsRank: 2,
             pqsScore: 90,
             promptText:
               "How does Acme stack up against Competitor 1 and Competitor 2 for coverage across AI answers, citation tracking, and executive reporting?",
             scoreMetadata: { topicFit: 29 },
-            scoreStatus: "scored",
+            scoreStatus: "scored" as const,
             sourceAnalysisRunId: "analysis-1",
             templateText:
               "How does {company} stack up against {competitor_list} for {topic}?",
-            variantType: "comparison",
+            variantType: "comparison" as const,
           },
         ],
-        source: "ai_suggested",
+        source: "ai_suggested" as const,
         sourceUrls: ["https://acme.com/blog/google-ai-mode"],
+        topicDescription: "Research prompts tied to Google AI Mode visibility.",
         topicName: "google ai mode",
       },
       {
@@ -193,39 +251,105 @@ function makeAnalysisResult(
         intentSummary: "Perplexity evaluation and alternatives research",
         prompts: [
           {
-            addedVia: "ai_suggested",
+            addedVia: "ai_suggested" as const,
+            intent: "recommendation" as const,
             pqsRank: 1,
             pqsScore: 92,
             promptText:
               "Which software do brand teams trust for measuring brand visibility across Perplexity, ChatGPT, and Gemini?",
             scoreMetadata: { topicFit: 30 },
-            scoreStatus: "scored",
+            scoreStatus: "scored" as const,
             sourceAnalysisRunId: "analysis-1",
             templateText:
               "Which software do teams trust for measuring {topic}?",
-            variantType: "discovery",
+            variantType: "discovery" as const,
           },
           {
-            addedVia: "ai_suggested",
+            addedVia: "ai_suggested" as const,
+            intent: "comparison" as const,
             pqsRank: 2,
             pqsScore: 89,
             promptText:
               "Which platform is stronger for teams that need coverage across AI answers, citation tracking, and executive reporting: Acme or Competitor 1 and Competitor 2?",
             scoreMetadata: { topicFit: 28 },
-            scoreStatus: "scored",
+            scoreStatus: "scored" as const,
             sourceAnalysisRunId: "analysis-1",
             templateText:
               "Which platform is stronger for teams that need {topic}: {company} or {competitor_list}?",
-            variantType: "comparison",
+            variantType: "comparison" as const,
           },
         ],
-        source: "ai_suggested",
+        source: "ai_suggested" as const,
         sourceUrls: ["https://acme.com/alternatives/perplexity"],
+        topicDescription: "Comparison prompts focused on Perplexity alternatives.",
         topicName: "perplexity",
       },
+    ]
+  const result = {
+    brandProfile: {
+      careers: null,
+      categories: ["ai visibility software", "answer engine analytics"],
+      comparisonSets: ["Acme vs Competitor 1", "Acme vs Competitor 2"],
+      conversionMoments: ["book a demo"],
+      detailedDescription: "Suggested description",
+      differentiators: ["citation tracking", "executive reporting"],
+      evidenceUrls: ["https://acme.com/compare/openai"],
+      geography: "North America",
+      jobsToBeDone: ["measure AI visibility"],
+      keywords: ["ai visibility", "answer engines"],
+      pricing: "demo-led SaaS pricing",
+      primaryCategory: "ai visibility software",
+      primarySubcategory: "brand visibility tracking",
+      products: ["citation tracking"],
+      reputationalQuestions: ["Is Acme worth it for brand teams?"],
+      researchJourneys: ["compare AI visibility tools"],
+      secondaryCategories: ["answer engine analytics"],
+      siteArchetype: "saas" as const,
+      targetAudiences: ["brand teams"],
+      targetCustomers: ["brand teams"],
+      warnings: [],
+    },
+    catalog:
+      overrides.catalog ?? {
+        brand: "Acme",
+        businessType: "saas",
+        domain: "acme.com",
+        primaryCategory: "ai visibility software",
+        topics: topics.map((topic) => ({
+          description: topic.topicDescription ?? `${topic.topicName} coverage`,
+          id: topic.clusterId,
+          name: topic.topicName,
+          prompts: topic.prompts.map((prompt, index) => ({
+            id: `${topic.clusterId}-${index + 1}`,
+            intent:
+              prompt.intent ??
+              (prompt.promptText.toLowerCase().includes("how does")
+                ? "comparison"
+                : "recommendation"),
+            text: prompt.promptText,
+          })),
+        })),
+      },
+    competitors: [
+      { name: "Competitor 1", website: "https://competitor-1.com" },
+      { name: "Competitor 2", website: "https://competitor-2.com" },
+      { name: "Competitor 3", website: "https://competitor-3.com" },
+      { name: "Competitor 4", website: "https://competitor-4.com" },
     ],
+    description: "Suggested description",
+    topics,
     warnings: [],
+  }
+
+  return {
+    ...result,
     ...overrides,
+    brandProfile: {
+      ...result.brandProfile,
+      ...(overrides as { brandProfile?: typeof result.brandProfile }).brandProfile,
+    },
+    catalog: overrides.catalog ?? result.catalog,
+    topics,
   }
 }
 
@@ -265,6 +389,23 @@ async function renderWizardComponent(
   )
 }
 
+async function renderWizardAtTopicReview() {
+  const user = userEvent.setup()
+
+  await renderWizard()
+
+  await user.type(screen.getByLabelText("Company website"), "acme.com")
+  await user.type(screen.getByLabelText("Company name"), "Acme")
+  await user.click(screen.getByRole("button", { name: "Continue" }))
+  await screen.findByRole("heading", { name: "Describe what you do" })
+  await user.click(screen.getByRole("button", { name: "Continue" }))
+  await screen.findByRole("heading", { name: "Add your competitors" })
+  await user.click(screen.getByRole("button", { name: "Continue" }))
+  await screen.findByRole("heading", { name: "Choose topics and prompts" })
+
+  return user
+}
+
 beforeEach(() => {
   mockReplace.mockReset()
   mockUseAuth.mockReset()
@@ -287,54 +428,134 @@ beforeEach(() => {
     status: "completed",
     warnings: [],
   })
+  mockSaveBrandDraftStep.mockResolvedValue(
+    makeBrand({
+      company_name: "Acme",
+      website: "https://acme.com",
+    })
+  )
   mockFetchOnboardingTopicPrompts.mockResolvedValue({
+    catalog: {
+      brand: "Acme",
+      businessType: "saas",
+      domain: "acme.com",
+      primaryCategory: "ai visibility software",
+      topics: [
+        {
+          description: "Commercial discovery prompts for AI visibility software.",
+          id: "ai-search",
+          name: "ai search",
+          prompts: [
+            {
+              id: "ai-search-1",
+              intent: "recommendation",
+              text:
+                "Which platforms are best for measuring brand visibility across ChatGPT, Gemini, and Perplexity for brand teams?",
+            },
+            {
+              id: "ai-search-2",
+              intent: "comparison",
+              text:
+                "For brand teams evaluating AI visibility platforms, how does Acme compare with Competitor 1 and Competitor 2 on coverage across AI answers, citation tracking, and executive reporting?",
+            },
+          ],
+        },
+        {
+          description: "Research prompts focused on Google AI Mode visibility.",
+          id: "google-ai-mode",
+          name: "google ai mode",
+          prompts: [
+            {
+              id: "google-ai-mode-1",
+              intent: "recommendation",
+              text:
+                "What platforms help brand teams with measuring brand visibility across Google AI Mode, ChatGPT, and Gemini?",
+            },
+            {
+              id: "google-ai-mode-2",
+              intent: "comparison",
+              text:
+                "How does Acme stack up against Competitor 1 and Competitor 2 for coverage across AI answers, citation tracking, and executive reporting?",
+            },
+          ],
+        },
+        {
+          description: "Comparison prompts tied to Perplexity alternatives.",
+          id: "perplexity",
+          name: "perplexity",
+          prompts: [
+            {
+              id: "perplexity-1",
+              intent: "recommendation",
+              text:
+                "Which software do brand teams trust for measuring brand visibility across Perplexity, ChatGPT, and Gemini?",
+            },
+            {
+              id: "perplexity-2",
+              intent: "comparison",
+              text:
+                "Which platform is stronger for teams that need coverage across AI answers, citation tracking, and executive reporting: Acme or Competitor 1 and Competitor 2?",
+            },
+          ],
+        },
+      ],
+    },
     topics: [
       {
         prompts: [
           {
             addedVia: "ai_suggested",
+            intent: "recommendation",
             promptText:
               "Which platforms are best for measuring brand visibility across ChatGPT, Gemini, and Perplexity for brand teams?",
           },
           {
             addedVia: "ai_suggested",
+            intent: "comparison",
             promptText:
               "For brand teams evaluating AI visibility platforms, how does Acme compare with Competitor 1 and Competitor 2 on coverage across AI answers, citation tracking, and executive reporting?",
           },
         ],
         source: "ai_suggested",
+        topicDescription: "Commercial discovery prompts for AI visibility software.",
         topicName: "ai search",
       },
       {
         prompts: [
           {
             addedVia: "ai_suggested",
+            intent: "recommendation",
             promptText:
               "What platforms help brand teams with measuring brand visibility across Google AI Mode, ChatGPT, and Gemini?",
           },
           {
             addedVia: "ai_suggested",
+            intent: "comparison",
             promptText:
               "How does Acme stack up against Competitor 1 and Competitor 2 for coverage across AI answers, citation tracking, and executive reporting?",
           },
         ],
         source: "ai_suggested",
+        topicDescription: "Research prompts focused on Google AI Mode visibility.",
         topicName: "google ai mode",
       },
       {
         prompts: [
           {
             addedVia: "ai_suggested",
+            intent: "recommendation",
             promptText:
               "Which software do brand teams trust for measuring brand visibility across Perplexity, ChatGPT, and Gemini?",
           },
           {
             addedVia: "ai_suggested",
+            intent: "comparison",
             promptText:
               "Which platform is stronger for teams that need coverage across AI answers, citation tracking, and executive reporting: Acme or Competitor 1 and Competitor 2?",
           },
         ],
         source: "ai_suggested",
+        topicDescription: "Comparison prompts tied to Perplexity alternatives.",
         topicName: "perplexity",
       },
     ],
@@ -739,6 +960,8 @@ describe("Onboarding wizard", () => {
       "Generated snippets",
       "AIO",
       "Discoverability",
+      "Citation analysis",
+      "Agent answers",
     ]) {
       await user.clear(topicInput)
       await user.type(topicInput, topic)
@@ -750,7 +973,7 @@ describe("Onboarding wizard", () => {
     await user.keyboard("{Enter}")
 
     expect(
-      await screen.findByText("You can add up to 10 topics.")
+      await screen.findByText("You can add up to 12 topics.")
     ).toBeInTheDocument()
   })
 
@@ -829,6 +1052,7 @@ describe("Onboarding wizard", () => {
     await user.click(screen.getByRole("button", { name: "Continue" }))
 
     expect(await screen.findByText("ai search")).toBeInTheDocument()
+    await user.click(screen.getByText("ai search"))
     expect(
       screen.getByText(
         "Which platforms are best for measuring brand visibility across ChatGPT, Gemini, and Perplexity for brand teams?"
@@ -857,6 +1081,7 @@ describe("Onboarding wizard", () => {
     expect(logSpy).toHaveBeenCalledWith(
       "[onboarding] Applying generated suggestions to wizard",
       {
+        catalogTopicCount: 3,
         competitorCount: 4,
         descriptionLength: "Suggested description".length,
         topics: ["ai search", "google ai mode", "perplexity"],
@@ -1139,6 +1364,178 @@ describe("Onboarding wizard", () => {
     expect(await screen.findByText("ai search")).toBeInTheDocument()
   })
 
+  it("refreshes the full catalog while preserving custom topics and removed prompt exclusions", async () => {
+    const user = await renderWizardAtTopicReview()
+
+    await user.type(screen.getByLabelText("Add a topic"), "owned geo strategy")
+    await user.click(screen.getByRole("button", { name: "Add topic" }))
+    expect(screen.getByText("owned geo strategy")).toBeInTheDocument()
+
+    await user.click(screen.getByText("ai search"))
+    await user.click(screen.getByRole("button", { name: "Remove prompt 1" }))
+    await user.click(screen.getByRole("button", { name: "Remove" }))
+
+    mockFetchOnboardingTopicPrompts.mockResolvedValueOnce({
+      catalog: {
+        brand: "Acme",
+        businessType: "saas",
+        domain: "acme.com",
+        primaryCategory: "ai visibility software",
+        topics: [
+          {
+            description: "Refreshed discovery prompts for owned GEO strategy.",
+            id: "owned-geo-strategy",
+            name: "owned geo strategy",
+            prompts: [
+              {
+                id: "owned-geo-strategy-1",
+                intent: "recommendation",
+                text: "What tools help growth teams operationalize an owned GEO strategy across ChatGPT and Gemini?",
+              },
+              {
+                id: "owned-geo-strategy-2",
+                intent: "follow_up",
+                text: "How should a growth team measure whether an owned GEO strategy is improving AI answer visibility over 90 days?",
+              },
+            ],
+          },
+          {
+            description: "Comparison prompts for Google AI Mode coverage.",
+            id: "google-ai-mode",
+            name: "google ai mode",
+            prompts: [
+              {
+                id: "google-ai-mode-1",
+                intent: "comparison",
+                text: "How does Acme compare with Competitor 1 for Google AI Mode coverage?",
+              },
+              {
+                id: "google-ai-mode-2",
+                intent: "recommendation",
+                text: "What platforms help brand teams measure visibility in Google AI Mode?",
+              },
+            ],
+          },
+          {
+            description: "Comparison prompts tied to Perplexity alternatives.",
+            id: "perplexity",
+            name: "perplexity",
+            prompts: [
+              {
+                id: "perplexity-1",
+                intent: "comparison",
+                text: "Which platform is stronger for teams that need coverage across AI answers, citation tracking, and executive reporting: Acme or Competitor 1 and Competitor 2?",
+              },
+              {
+                id: "perplexity-2",
+                intent: "recommendation",
+                text: "Which software do brand teams trust for measuring brand visibility across Perplexity, ChatGPT, and Gemini?",
+              },
+            ],
+          },
+        ],
+      },
+      topics: [
+        {
+          prompts: [
+            {
+              addedVia: "ai_suggested",
+              intent: "recommendation",
+              promptText:
+                "What tools help growth teams operationalize an owned GEO strategy across ChatGPT and Gemini?",
+            },
+            {
+              addedVia: "ai_suggested",
+              intent: "follow_up",
+              promptText:
+                "How should a growth team measure whether an owned GEO strategy is improving AI answer visibility over 90 days?",
+            },
+          ],
+          source: "user_added",
+          topicDescription: "Refreshed discovery prompts for owned GEO strategy.",
+          topicName: "owned geo strategy",
+        },
+        {
+          prompts: [
+            {
+              addedVia: "ai_suggested",
+              intent: "comparison",
+              promptText:
+                "How does Acme compare with Competitor 1 for Google AI Mode coverage?",
+            },
+            {
+              addedVia: "ai_suggested",
+              intent: "recommendation",
+              promptText:
+                "What platforms help brand teams measure visibility in Google AI Mode?",
+            },
+          ],
+          source: "ai_suggested",
+          topicDescription: "Comparison prompts for Google AI Mode coverage.",
+          topicName: "google ai mode",
+        },
+        {
+          prompts: [
+            {
+              addedVia: "ai_suggested",
+              intent: "comparison",
+              promptText:
+                "Which platform is stronger for teams that need coverage across AI answers, citation tracking, and executive reporting: Acme or Competitor 1 and Competitor 2?",
+            },
+            {
+              addedVia: "ai_suggested",
+              intent: "recommendation",
+              promptText:
+                "Which software do brand teams trust for measuring brand visibility across Perplexity, ChatGPT, and Gemini?",
+            },
+          ],
+          source: "ai_suggested",
+          topicDescription: "Comparison prompts tied to Perplexity alternatives.",
+          topicName: "perplexity",
+        },
+      ],
+      warnings: [],
+    })
+
+    await user.click(screen.getByRole("button", { name: "Refresh catalog" }))
+
+    await waitFor(() =>
+      expect(mockFetchOnboardingTopicPrompts).toHaveBeenCalledWith(
+        expect.objectContaining({
+          excludedPromptTexts: [
+            "Which platforms are best for measuring brand visibility across ChatGPT, Gemini, and Perplexity for brand teams?",
+          ],
+          mode: "full_refresh",
+          topics: expect.arrayContaining([
+            expect.objectContaining({
+              source: "user_added",
+              topicName: "owned geo strategy",
+            }),
+          ]),
+        })
+      )
+    )
+
+    expect(screen.getByText("owned geo strategy")).toBeInTheDocument()
+    expect(
+      screen.queryByText(
+        "Which platforms are best for measuring brand visibility across ChatGPT, Gemini, and Perplexity for brand teams?"
+      )
+    ).not.toBeInTheDocument()
+  })
+
+  it("filters the catalog with the step 4 search input", async () => {
+    const user = await renderWizardAtTopicReview()
+
+    await user.type(
+      screen.getByRole("textbox", { name: "Search topics and prompts" }),
+      "google ai mode"
+    )
+
+    expect(screen.getByText("google ai mode")).toBeInTheDocument()
+    expect(screen.queryByText("ai search")).not.toBeInTheDocument()
+  })
+
   it("adds and removes competitor rows, then completes onboarding", async () => {
     const user = userEvent.setup()
 
@@ -1170,6 +1567,10 @@ describe("Onboarding wizard", () => {
 
     await user.click(screen.getByRole("button", { name: "Continue" }))
     expect(await screen.findByRole("button", { name: "Complete setup" })).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Refresh catalog" }))
+    await waitFor(() =>
+      expect(mockFetchOnboardingTopicPrompts).toHaveBeenCalledTimes(1)
+    )
     await user.click(screen.getByRole("button", { name: "Complete setup" }))
 
     await waitFor(() =>
@@ -1237,6 +1638,10 @@ describe("Onboarding wizard", () => {
     await user.type(websiteInputs[2]!, "competitor-3.com")
 
     await user.click(screen.getByRole("button", { name: "Continue" }))
+    await user.click(screen.getByRole("button", { name: "Refresh catalog" }))
+    await waitFor(() =>
+      expect(mockFetchOnboardingTopicPrompts).toHaveBeenCalledTimes(1)
+    )
     await user.click(screen.getByRole("button", { name: "Complete setup" }))
 
     expect(

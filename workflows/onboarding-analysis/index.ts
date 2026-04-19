@@ -1,5 +1,6 @@
 import { buildBrandProfileStep } from "@/workflows/onboarding-analysis/steps/build-brand-profile"
 import { classifyHomepageStep } from "@/workflows/onboarding-analysis/steps/classify-homepage"
+import { extractPageSignalsStep } from "@/workflows/onboarding-analysis/steps/extract-page-signals"
 import { failRunStep } from "@/workflows/onboarding-analysis/steps/fail-run"
 import { finalizeRunStep } from "@/workflows/onboarding-analysis/steps/finalize-run"
 import { generateCompetitorCandidatesStep } from "@/workflows/onboarding-analysis/steps/generate-competitor-candidates"
@@ -28,7 +29,8 @@ export async function onboardingAnalysisWorkflow(
     const prefiltered = await prefilterMappedPagesStep(classified)
     const selected = await selectCriticalPagesStep(prefiltered)
     const scraped = await scrapeSelectedPagesStep(selected)
-    const profiled = await buildBrandProfileStep(scraped)
+    const signaled = await extractPageSignalsStep(scraped)
+    const profiled = await buildBrandProfileStep(signaled)
     const generatedCompetitors = await generateCompetitorCandidatesStep(profiled)
     const scoredCompetitors = await scoreCompetitorsStep(generatedCompetitors)
     const prompted = await generateTopicsAndPromptsStep(scoredCompetitors)

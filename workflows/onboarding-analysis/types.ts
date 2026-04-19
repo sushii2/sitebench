@@ -4,6 +4,7 @@ import type {
   OnboardingCompetitor,
   OnboardingCriticalPageSelection,
   OnboardingHomepageClassification,
+  OnboardingPageSignal,
   OnboardingScrapeContext,
   OnboardingTopicDraft,
 } from "@/lib/onboarding/types"
@@ -70,7 +71,11 @@ export interface ScrapedState extends SelectedState {
   scrapedPages: ScrapedSelectedPage[]
 }
 
-export interface ProfiledState extends ScrapedState {
+export interface SignalState extends ScrapedState {
+  pageSignals: OnboardingPageSignal[]
+}
+
+export interface ProfiledState extends SignalState {
   brandProfile: OnboardingBrandProfile
 }
 

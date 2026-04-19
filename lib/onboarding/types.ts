@@ -21,6 +21,18 @@ export const onboardingPromptVariantValues = [
   "competitor_specific",
 ] as const
 
+export const onboardingPromptIntentValues = [
+  "brand_aware",
+  "informational",
+  "comparison",
+  "recommendation",
+  "constraint_based",
+  "transactional",
+  "local",
+  "reputational",
+  "follow_up",
+] as const
+
 export const onboardingPromptIntentTypeValues = [
   "category_discovery",
   "recommendation",
@@ -150,8 +162,26 @@ export const onboardingPromptAddedViaSchema = z.enum([
   "system_seeded",
 ])
 
+export const onboardingPromptIntentSchema = z.enum(
+  onboardingPromptIntentValues
+)
+
+export const onboardingPromptGenerationMetadataSchema = z.object({
+  brand: z.string().trim().min(1),
+  businessType: z.string().trim().min(1),
+  domain: z.string().trim().min(1),
+  evidenceUrls: z.array(z.string().trim().min(1)).default([]),
+  primaryCategory: z.string().trim().min(1),
+  sourceUrls: z.array(z.string().trim().min(1)).default([]),
+  topicDescription: z.string().trim().default(""),
+  topicId: z.string().trim().min(1),
+  topicName: z.string().trim().min(1),
+})
+
 export const onboardingPromptDraftSchema = z.object({
   addedVia: onboardingPromptAddedViaSchema,
+  generationMetadata: onboardingPromptGenerationMetadataSchema.optional(),
+  intent: onboardingPromptIntentSchema.optional(),
   pqsRank: z.number().int().positive().optional(),
   pqsScore: z.number().min(0).max(100).optional(),
   promptText: z.string().trim().min(1, "Prompt text is required"),
@@ -172,6 +202,7 @@ export const onboardingTopicInputSchema = z.object({
 
 export const onboardingTopicDraftSchema = onboardingTopicInputSchema.extend({
   prompts: z.array(onboardingPromptDraftSchema),
+  topicDescription: z.string().trim().default("").optional(),
   topicId: z.string().trim().min(1).optional(),
 })
 
@@ -206,20 +237,27 @@ export const onboardingCriticalPageSelectionSchema = z.object({
 })
 
 export const onboardingPageSignalSchema = z.object({
-  competitorCandidates: z.array(onboardingCompetitorSchema),
+  competitorCandidates: z.array(onboardingCompetitorSchema).default([]),
   confidence: z.number().min(0).max(1),
-  entities: z.array(z.string()),
-  evidenceSnippets: z.array(z.string()),
-  intents: z.array(z.string()),
+  entities: z.array(z.string().trim().min(1)).default([]),
+  evidenceSnippets: z.array(z.string().trim().min(1)).default([]),
+  intents: z.array(z.string().trim().min(1)).default([]),
   pageType: z.enum(onboardingPageRoleValues),
-  summary: z.string(),
   url: z.string().trim().min(1),
+})
+
+export const onboardingPageSignalBatchSchema = z.object({
+  pages: z.array(onboardingPageSignalSchema),
 })
 
 export const onboardingBrandProfileSchema = z.object({
   careers: z.string().trim().nullable(),
   categories: z.array(z.string().trim().min(1)).min(1),
+  comparisonSets: z.array(z.string().trim().min(1)).default([]),
+  conversionMoments: z.array(z.string().trim().min(1)).default([]),
   detailedDescription: z.string().trim().min(1),
+  differentiators: z.array(z.string().trim().min(1)).default([]),
+  evidenceUrls: z.array(z.string().trim().min(1)).default([]),
   geography: z.string().trim().nullable(),
   jobsToBeDone: z.array(z.string().trim().min(1)).default([]),
   keywords: z.array(z.string().trim().min(1)).default([]),
@@ -227,7 +265,11 @@ export const onboardingBrandProfileSchema = z.object({
   primaryCategory: z.string().trim().min(1),
   primarySubcategory: z.string().trim().default(""),
   products: z.array(z.string().trim().min(1)).default([]),
+  reputationalQuestions: z.array(z.string().trim().min(1)).default([]),
+  researchJourneys: z.array(z.string().trim().min(1)).default([]),
+  secondaryCategories: z.array(z.string().trim().min(1)).default([]),
   siteArchetype: z.enum(onboardingSiteArchetypeValues),
+  targetAudiences: z.array(z.string().trim().min(1)).default([]),
   targetCustomers: z.array(z.string().trim().min(1)).default([]),
   warnings: z.array(z.string()).default([]),
 })
@@ -424,7 +466,11 @@ export const onboardingGatewayCriticalPageSelectionSchema =
 const onboardingGatewayBrandProfileValidationSchema = z.object({
   careers: z.string().trim().nullable(),
   categories: z.array(z.string().trim().min(1)).min(1),
+  comparisonSets: z.array(z.string().trim().min(1)),
+  conversionMoments: z.array(z.string().trim().min(1)),
   detailedDescription: z.string().trim().min(1),
+  differentiators: z.array(z.string().trim().min(1)),
+  evidenceUrls: z.array(z.string().trim().min(1)),
   geography: z.string().trim().nullable(),
   jobsToBeDone: z.array(z.string().trim().min(1)),
   keywords: z.array(z.string().trim().min(1)),
@@ -432,7 +478,11 @@ const onboardingGatewayBrandProfileValidationSchema = z.object({
   primaryCategory: z.string().trim().min(1),
   primarySubcategory: z.string().trim(),
   products: z.array(z.string().trim().min(1)),
+  reputationalQuestions: z.array(z.string().trim().min(1)),
+  researchJourneys: z.array(z.string().trim().min(1)),
+  secondaryCategories: z.array(z.string().trim().min(1)),
   siteArchetype: z.enum(onboardingSiteArchetypeValues),
+  targetAudiences: z.array(z.string().trim().min(1)),
   targetCustomers: z.array(z.string().trim().min(1)),
   warnings: z.array(z.string()),
 })
@@ -454,9 +504,37 @@ export const onboardingGatewayBrandProfileSchema =
             minLength: 1,
           },
         },
+        comparisonSets: {
+          type: "array",
+          items: {
+            type: "string",
+            minLength: 1,
+          },
+        },
+        conversionMoments: {
+          type: "array",
+          items: {
+            type: "string",
+            minLength: 1,
+          },
+        },
         detailedDescription: {
           type: "string",
           minLength: 1,
+        },
+        differentiators: {
+          type: "array",
+          items: {
+            type: "string",
+            minLength: 1,
+          },
+        },
+        evidenceUrls: {
+          type: "array",
+          items: {
+            type: "string",
+            minLength: 1,
+          },
         },
         geography: {
           anyOf: [{ type: "string" }, { type: "null" }],
@@ -493,9 +571,37 @@ export const onboardingGatewayBrandProfileSchema =
             minLength: 1,
           },
         },
+        reputationalQuestions: {
+          type: "array",
+          items: {
+            type: "string",
+            minLength: 1,
+          },
+        },
+        researchJourneys: {
+          type: "array",
+          items: {
+            type: "string",
+            minLength: 1,
+          },
+        },
+        secondaryCategories: {
+          type: "array",
+          items: {
+            type: "string",
+            minLength: 1,
+          },
+        },
         siteArchetype: {
           type: "string",
           enum: [...onboardingSiteArchetypeValues],
+        },
+        targetAudiences: {
+          type: "array",
+          items: {
+            type: "string",
+            minLength: 1,
+          },
         },
         targetCustomers: {
           type: "array",
@@ -514,7 +620,11 @@ export const onboardingGatewayBrandProfileSchema =
       required: [
         "careers",
         "categories",
+        "comparisonSets",
+        "conversionMoments",
         "detailedDescription",
+        "differentiators",
+        "evidenceUrls",
         "geography",
         "jobsToBeDone",
         "keywords",
@@ -522,7 +632,11 @@ export const onboardingGatewayBrandProfileSchema =
         "primaryCategory",
         "primarySubcategory",
         "products",
+        "reputationalQuestions",
+        "researchJourneys",
+        "secondaryCategories",
         "siteArchetype",
+        "targetAudiences",
         "targetCustomers",
         "warnings",
       ],
@@ -621,6 +735,192 @@ export const onboardingPromptGenerationSchema =
 export const onboardingGatewayPromptGenerationSchema =
   onboardingPromptFormulaPayloadSchema
 
+export const onboardingCatalogPromptSchema = z.object({
+  id: z.string().trim().min(1),
+  intent: onboardingPromptIntentSchema,
+  text: z.string().trim().min(1),
+})
+
+export const onboardingCatalogTopicSchema = z.object({
+  description: z.string().trim().min(1),
+  id: z.string().trim().min(1),
+  name: z.string().trim().min(1),
+  prompts: z.array(onboardingCatalogPromptSchema).min(1),
+})
+
+export const onboardingCatalogSchema = z.object({
+  brand: z.string().trim().min(1),
+  businessType: z.string().trim().min(1),
+  domain: z.string().trim().min(1),
+  primaryCategory: z.string().trim().min(1),
+  topics: z.array(onboardingCatalogTopicSchema),
+})
+
+const onboardingGatewayCatalogValidationSchema = onboardingCatalogSchema
+
+export const onboardingGatewayCatalogSchema = createGatewayValidatedSchema(
+  {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      brand: {
+        type: "string",
+        minLength: 1,
+      },
+      businessType: {
+        type: "string",
+        minLength: 1,
+      },
+      domain: {
+        type: "string",
+        minLength: 1,
+      },
+      primaryCategory: {
+        type: "string",
+        minLength: 1,
+      },
+      topics: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            description: {
+              type: "string",
+              minLength: 1,
+            },
+            id: {
+              type: "string",
+              minLength: 1,
+            },
+            name: {
+              type: "string",
+              minLength: 1,
+            },
+            prompts: {
+              type: "array",
+              minItems: 1,
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  id: {
+                    type: "string",
+                    minLength: 1,
+                  },
+                  intent: {
+                    type: "string",
+                    enum: [...onboardingPromptIntentValues],
+                  },
+                  text: {
+                    type: "string",
+                    minLength: 1,
+                  },
+                },
+                required: ["id", "intent", "text"],
+              },
+            },
+          },
+          required: ["description", "id", "name", "prompts"],
+        },
+      },
+    },
+    required: [
+      "brand",
+      "businessType",
+      "domain",
+      "primaryCategory",
+      "topics",
+    ],
+  },
+  onboardingGatewayCatalogValidationSchema
+)
+
+const onboardingGatewayPageSignalBatchValidationSchema =
+  onboardingPageSignalBatchSchema
+
+export const onboardingGatewayPageSignalBatchSchema =
+  createGatewayValidatedSchema(
+    {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        pages: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              competitorCandidates: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    name: {
+                      type: "string",
+                      minLength: 1,
+                    },
+                    website: {
+                      type: "string",
+                      minLength: 1,
+                    },
+                  },
+                  required: ["name", "website"],
+                },
+              },
+              confidence: {
+                type: "number",
+                minimum: 0,
+                maximum: 1,
+              },
+              entities: {
+                type: "array",
+                items: {
+                  type: "string",
+                  minLength: 1,
+                },
+              },
+              evidenceSnippets: {
+                type: "array",
+                items: {
+                  type: "string",
+                  minLength: 1,
+                },
+              },
+              intents: {
+                type: "array",
+                items: {
+                  type: "string",
+                  minLength: 1,
+                },
+              },
+              pageType: {
+                type: "string",
+                enum: [...onboardingPageRoleValues],
+              },
+              url: {
+                type: "string",
+                minLength: 1,
+              },
+            },
+            required: [
+              "competitorCandidates",
+              "confidence",
+              "entities",
+              "evidenceSnippets",
+              "intents",
+              "pageType",
+              "url",
+            ],
+          },
+        },
+      },
+      required: ["pages"],
+    },
+    onboardingGatewayPageSignalBatchValidationSchema
+  )
+
 export const onboardingPromptScoreBreakdownSchema = z.object({
   brandCompetitorRelevance: z.number().min(0).max(10),
   buyerValue: z.number().min(0).max(15),
@@ -676,6 +976,7 @@ export const onboardingCompetitorScoringPayloadSchema = z.object({
 
 export const onboardingAnalysisResultSchema = z.object({
   brandProfile: onboardingBrandProfileSchema,
+  catalog: onboardingCatalogSchema,
   competitors: z.array(onboardingCompetitorSchema),
   description: z.string(),
   topics: z.array(onboardingTopicDraftSchema),
@@ -699,11 +1000,15 @@ export const onboardingTopicPromptRequestSchema = z.object({
   companyName: z.string().trim().min(1, "Company name is required"),
   competitors: z.array(onboardingCompetitorSchema),
   description: z.string(),
-  topics: z.array(onboardingTopicInputSchema).min(1, "Add at least one topic."),
+  excludedPromptTexts: z.array(z.string().trim().min(1)).default([]).optional(),
+  excludedTopicNames: z.array(z.string().trim().min(1)).default([]).optional(),
+  mode: z.enum(["full_refresh"]).default("full_refresh").optional(),
+  topics: z.array(onboardingTopicInputSchema).default([]).optional(),
   website: z.string().trim().min(1, "Website is required"),
 })
 
 export const onboardingTopicPromptResponseSchema = z.object({
+  catalog: onboardingCatalogSchema,
   topics: z.array(onboardingTopicDraftSchema),
   warnings: z.array(z.string()),
 })
@@ -775,6 +1080,10 @@ export type OnboardingCriticalPageSelection = z.infer<
 
 export type OnboardingPageSignal = z.infer<typeof onboardingPageSignalSchema>
 
+export type OnboardingPageSignalBatch = z.infer<
+  typeof onboardingPageSignalBatchSchema
+>
+
 export type OnboardingBrandProfile = z.infer<
   typeof onboardingBrandProfileSchema
 >
@@ -786,6 +1095,8 @@ export type OnboardingPromptGenerationCandidate = z.infer<
 export type OnboardingPromptGeneration = z.infer<
   typeof onboardingPromptGenerationSchema
 >
+
+export type OnboardingCatalog = z.infer<typeof onboardingCatalogSchema>
 
 export type OnboardingCompetitorScoringPayload = z.infer<
   typeof onboardingCompetitorScoringPayloadSchema
