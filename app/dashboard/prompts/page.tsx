@@ -1,5 +1,5 @@
-import { DashboardPage } from "@/components/dashboard-page"
+import { PromptsPage } from "@/components/dashboard/prompts/prompts-page"
 
-export default function PromptsPage() {
-  return <DashboardPage title="Prompts" />
+export default function Page() {
+  return <PromptsPage />
 }
