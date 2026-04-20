@@ -5,12 +5,13 @@ const mockStepCountIs = vi.fn((count: number) => ({
   count,
   type: "stepCountIs",
 }))
-const mockOpenAiWebSearchTool = vi.fn(() => ({
-  type: "web_search",
+const mockParallelWebSearchTool = vi.fn(() => ({
+  type: "parallel_search",
 }))
 const mockGetLanguageModel = vi.fn(
-  (_providerId: string, options?: { capability?: string }) => ({
+  (_providerId: string, options?: { capability?: string; modelId?: string }) => ({
     capability: options?.capability ?? "default",
+    modelId: options?.modelId ?? "default-model",
     provider: "gateway",
   })
 )
@@ -31,7 +32,7 @@ vi.mock("ai", async (importOriginal) => {
 
 vi.mock("@/lib/ai/provider-config", () => ({
   getLanguageModel: mockGetLanguageModel,
-  getOpenAiWebSearchTool: mockOpenAiWebSearchTool,
+  getParallelWebSearchTool: mockParallelWebSearchTool,
 }))
 
 async function loadNormalizeModule() {
@@ -43,7 +44,7 @@ describe("normalizeBrandOnboarding", () => {
     vi.resetModules()
     mockGenerateText.mockReset()
     mockGetLanguageModel.mockClear()
-    mockOpenAiWebSearchTool.mockClear()
+    mockParallelWebSearchTool.mockClear()
     mockStepCountIs.mockClear()
   })
 
@@ -129,9 +130,11 @@ describe("normalizeBrandOnboarding", () => {
     })
     expect(mockGetLanguageModel).toHaveBeenNthCalledWith(1, "openai", {
       capability: "structuredOutput",
+      modelId: "openai/gpt-5.4",
     })
     expect(tierOneCall[0].model).toEqual({
       capability: "structuredOutput",
+      modelId: "openai/gpt-5.4",
       provider: "gateway",
     })
     expect(tierOneCall[0].prompt).toContain("Homepage URL: https://acme.com")
@@ -145,10 +148,12 @@ describe("normalizeBrandOnboarding", () => {
     expect(tierOneCall[0].prompt).not.toContain('"keywords"')
 
     expect(mockGetLanguageModel).toHaveBeenNthCalledWith(2, "openai", {
-      capability: "webSearch",
+      capability: "structuredOutput",
+      modelId: "openai/gpt-5.4",
     })
     expect(tierTwoCall[0].model).toEqual({
-      capability: "webSearch",
+      capability: "structuredOutput",
+      modelId: "openai/gpt-5.4",
       provider: "gateway",
     })
     expect(tierTwoCall[0].prompt).toContain("Tier 1 description")
@@ -160,16 +165,31 @@ describe("normalizeBrandOnboarding", () => {
       description: expect.stringContaining("direct competitor recovery"),
       name: "onboarding_competitor_recovery",
     })
-    expect(mockOpenAiWebSearchTool).toHaveBeenCalledTimes(1)
+    expect(tierTwoCall[0].system).toContain("Call parallel_search at most once")
+    expect(mockParallelWebSearchTool).toHaveBeenCalledTimes(1)
     expect(tierTwoCall[0].tools).toEqual({
-      web_search: {
-        type: "web_search",
+      parallel_search: {
+        type: "parallel_search",
       },
     })
-    expect(mockStepCountIs).toHaveBeenCalledWith(5)
+    expect(mockStepCountIs).toHaveBeenCalledWith(3)
     expect(tierTwoCall[0].stopWhen).toEqual({
-      count: 5,
+      count: 3,
       type: "stepCountIs",
+    })
+    expect(tierTwoCall[0].prepareStep).toBeTypeOf("function")
+    expect(
+      tierTwoCall[0].prepareStep({
+        stepNumber: 1,
+        steps: [
+          {
+            toolCalls: [{ toolName: "parallel_search" }],
+            toolResults: [{ toolName: "parallel_search" }],
+          },
+        ],
+      })
+    ).toEqual({
+      activeTools: [],
     })
 
     expect(result.description).toHaveLength(500)

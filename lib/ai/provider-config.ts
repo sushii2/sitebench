@@ -45,6 +45,9 @@ export interface GetLanguageModelOptions {
 type GatewayProviderInstance = ReturnType<typeof createGateway>
 type GatewayLanguageModel = ReturnType<GatewayProviderInstance>
 type GatewayEmbeddingModel = ReturnType<GatewayProviderInstance["embeddingModel"]>
+type ParallelSearchConfig = Parameters<
+  GatewayProviderInstance["tools"]["parallelSearch"]
+>[0]
 type PerplexitySearchConfig = Parameters<
   GatewayProviderInstance["tools"]["perplexitySearch"]
 >[0]
@@ -101,14 +104,23 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderRegistryEntry> = {
       webSearch: true,
     }),
     capabilityDefaultModelIds: {
-      streamingResponse: "openai/gpt-5.4-mini",
-      structuredOutput: "openai/gpt-5.4-mini",
-      webSearch: "openai/gpt-5.4-mini",
+      streamingResponse: "openai/gpt-5.4",
+      structuredOutput: "openai/gpt-5.4",
+      webSearch: "openai/gpt-5.4",
     },
-    defaultModelId: "openai/gpt-5.4-mini",
+    defaultModelId: "openai/gpt-5.4",
     id: "openai",
     logo: "https://cdn.simpleicons.org/openai",
     models: [
+      {
+        capabilities: createCapabilityMap({
+          streamingResponse: true,
+          structuredOutput: true,
+          webSearch: true,
+        }),
+        id: "openai/gpt-5.4",
+        name: "GPT-5.4",
+      },
       {
         capabilities: createCapabilityMap({
           streamingResponse: true,
@@ -379,6 +391,18 @@ export function getOpenAiWebSearchTool() {
       country: "US",
     },
   })
+}
+
+export function getParallelWebSearchTool(
+  options?: ParallelSearchConfig
+) {
+  // Parallel Search is a gateway tool and can be attached to any compatible
+  // model; it does not depend on the provider's native web-search capability.
+  if (!options) {
+    return getGatewayTools().parallelSearch()
+  }
+
+  return getGatewayTools().parallelSearch(options)
 }
 
 export function getPerplexityWebSearchTool(

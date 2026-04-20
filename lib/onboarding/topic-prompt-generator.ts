@@ -5,7 +5,10 @@ import {
   createGatewayStructuredObjectOutput,
 } from "@/lib/ai/gateway-structured-output"
 import { normalizeBrandTopics, normalizeWebsite } from "@/lib/brands"
-import { getLanguageModel } from "@/lib/ai/provider-config"
+import {
+  getOnboardingStructuredOutputModel,
+  ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
+} from "@/lib/onboarding/ai-config"
 import type {
   OnboardingBrandProfile,
   OnboardingCatalog,
@@ -29,7 +32,6 @@ const DEFAULT_TOPIC_COUNT_RANGE = {
 }
 
 const DEFAULT_PROMPTS_PER_TOPIC = 20
-const DEFAULT_STRUCTURED_OUTPUT_MODEL_ID = "openai/gpt-5.4"
 
 type NormalizedScrapedPage = {
   competitorCandidates: OnboardingCompetitor[]
@@ -424,10 +426,7 @@ async function retryCatalogGeneration(input: {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const { output } = await generateText({
-        model: getLanguageModel("openai", {
-          capability: "structuredOutput",
-          modelId: DEFAULT_STRUCTURED_OUTPUT_MODEL_ID,
-        }),
+        model: getOnboardingStructuredOutputModel(),
         output: createGatewayStructuredObjectOutput({
           description:
             "Structured GEO prompt starter catalog grouped into coherent topics.",
@@ -451,6 +450,7 @@ async function retryCatalogGeneration(input: {
           promptsPerTopic: input.promptsPerTopic,
           topicCountRange: input.topicCountRange,
         }),
+        providerOptions: ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
         temperature: 0,
       })
 

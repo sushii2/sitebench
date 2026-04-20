@@ -1,13 +1,16 @@
-import { generateText, stepCountIs } from "ai"
+import { generateText } from "ai"
 
 import {
   buildGatewayStructuredOutputSystemPrompt,
   createGatewayStructuredObjectOutput,
 } from "@/lib/ai/gateway-structured-output"
 import {
-  getLanguageModel,
-  getOpenAiWebSearchTool,
-} from "@/lib/ai/provider-config"
+  getOnboardingSearchTools,
+  getOnboardingSearchModel,
+  getOnboardingStructuredOutputModel,
+  ONBOARDING_SEARCH_PROVIDER_OPTIONS,
+  ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
+} from "@/lib/onboarding/ai-config"
 import { normalizeBrandTopics, normalizeDescription, normalizeWebsite } from "@/lib/brands"
 import {
   onboardingAiSuggestionSchema,
@@ -19,12 +22,12 @@ import {
   type OnboardingCompetitorRecovery,
   type OnboardingScrapeContext,
 } from "@/lib/onboarding/types"
+import { createSingleSearchStructuredOutputLoopControl } from "@/lib/onboarding/search-loop-control"
 
 const MIN_COMPETITORS_WARNING_THRESHOLD = 4
 const MAX_COMPETITORS = 5
 const MAX_DESCRIPTION_LENGTH = 500
 const FALLBACK_DESCRIPTION_SEGMENT_LENGTH = 320
-const WEB_RESEARCH_MAX_STEPS = 5
 const TIER_TWO_FAILURE_WARNING =
   "We could not improve competitors with web search. Review and add competitors if needed."
 
@@ -61,6 +64,7 @@ const COMPETITOR_RECOVERY_SYSTEM_PROMPT =
   buildGatewayStructuredOutputSystemPrompt([
   "You are an expert competitive intelligence assistant for onboarding.",
   "Use web search only to recover direct competitors for a specific company when homepage evidence alone was insufficient.",
+  "Call parallel_search at most once.",
   "Anchor your search on the supplied company name, website, Tier 1 description, and Tier 1 topics.",
   "Return only the competitors field expected by the schema.",
   "A competitor must solve a similar core problem for a similar buyer.",
@@ -186,10 +190,14 @@ async function recoverCompetitorsWithWebSearch(input: {
   website: string
   tierOneResult: OnboardingBrandResponse
 }) {
+  const searchTools = getOnboardingSearchTools()
+  const searchLoopControl = createSingleSearchStructuredOutputLoopControl(
+    searchTools,
+    "[onboarding] Tier 2 competitor recovery disabled tools for final structured output"
+  )
+
   const { output } = await generateText({
-    model: getLanguageModel("openai", {
-      capability: "webSearch",
-    }),
+    model: getOnboardingSearchModel(),
     output: createGatewayStructuredObjectOutput({
       description:
         "Structured direct competitor recovery for onboarding analysis.",
@@ -198,10 +206,10 @@ async function recoverCompetitorsWithWebSearch(input: {
     }),
     system: COMPETITOR_RECOVERY_SYSTEM_PROMPT,
     prompt: createTierTwoPrompt(input),
-    tools: {
-      web_search: getOpenAiWebSearchTool(),
-    },
-    stopWhen: stepCountIs(WEB_RESEARCH_MAX_STEPS),
+    providerOptions: ONBOARDING_SEARCH_PROVIDER_OPTIONS,
+    temperature: 0,
+    tools: searchTools,
+    ...searchLoopControl,
     onStepFinish({ finishReason, stepNumber, text, toolCalls, toolResults, usage }) {
       console.log("[onboarding] Tier 2 competitor recovery step finished", {
         finishReason,
@@ -293,9 +301,7 @@ export async function normalizeBrandOnboarding(
   })
 
   const { output } = await generateText({
-    model: getLanguageModel("openai", {
-      capability: "structuredOutput",
-    }),
+    model: getOnboardingStructuredOutputModel(),
     output: createGatewayStructuredObjectOutput({
       description:
         "Structured homepage onboarding synthesis with description, topics, and competitors.",
@@ -304,6 +310,7 @@ export async function normalizeBrandOnboarding(
     }),
     system: ONBOARDING_SYSTEM_PROMPT,
     prompt: createTierOnePrompt(input),
+    providerOptions: ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
     temperature: 0,
   })
 

@@ -1,18 +1,77 @@
-import { generateText, NoOutputGeneratedError, Output, stepCountIs } from "ai"
+import { generateText, NoOutputGeneratedError, Output } from "ai"
 
 import { buildGatewayStructuredOutputSystemPrompt } from "@/lib/ai/gateway-structured-output"
 import {
-  getLanguageModel,
-  getOpenAiWebSearchTool,
-} from "@/lib/ai/provider-config"
+  getOnboardingSearchTools,
+  getOnboardingSearchModel,
+  ONBOARDING_SEARCH_PROVIDER_OPTIONS,
+  getOnboardingStructuredOutputModel,
+  ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
+} from "@/lib/onboarding/ai-config"
 import {
   onboardingCompetitorRecoverySchema,
   type OnboardingBrandProfile,
   type OnboardingCompetitor,
 } from "@/lib/onboarding/types"
+import { createSingleSearchStructuredOutputLoopControl } from "@/lib/onboarding/search-loop-control"
 
-const WEB_RESEARCH_MAX_STEPS = 8
-const SEARCH_ASSISTED_MODEL_ID = "openai/gpt-5.4-mini"
+function buildCompetitorCandidatePrompt(input: {
+  brandProfile: OnboardingBrandProfile
+  companyName: string
+  website: string
+}) {
+  return [
+    `Company: ${input.companyName}`,
+    `Website: ${input.website}`,
+    `Primary category: ${input.brandProfile.primaryCategory}`,
+    `Secondary categories: ${input.brandProfile.secondaryCategories.join(", ") || "(none)"}`,
+    `Description: ${input.brandProfile.detailedDescription}`,
+    `Target customers: ${input.brandProfile.targetCustomers.join(", ") || "(none)"}`,
+    `Differentiators: ${input.brandProfile.differentiators.join(", ") || "(none)"}`,
+    `Comparison sets: ${input.brandProfile.comparisonSets.join(", ") || "(none)"}`,
+    `Research journeys: ${input.brandProfile.researchJourneys.join(", ") || "(none)"}`,
+  ].join("\n")
+}
+
+function buildCompetitorCandidateSystemPrompt(extraInstructions: string[] = []) {
+  return buildGatewayStructuredOutputSystemPrompt([
+    "Find direct or near-direct competitors for the supplied brand profile.",
+    "Call parallel_search at most once.",
+    "Search for the brand name and domain first, then the category and comparison terms buyers use.",
+    "Use search-supported category overlap and buyer overlap.",
+    "Prefer official competitor homepages and high-signal comparison pages.",
+    "Exclude the input company, agencies, publishers, marketplaces, partners, and obvious non-competitors unless the overlap is direct.",
+    "Return an empty competitor list rather than weak guesses.",
+    "Return only the schema fields.",
+    ...extraInstructions,
+  ])
+}
+
+async function generateCompetitorCandidatesWithStructuredFallback(input: {
+  brandProfile: OnboardingBrandProfile
+  companyName: string
+  website: string
+}) {
+  const { output } = await generateText({
+    model: getOnboardingStructuredOutputModel(),
+    output: Output.object({
+      description:
+        "Structured direct competitor candidates for the current brand profile.",
+      name: "onboarding_competitor_candidates",
+      schema: onboardingCompetitorRecoverySchema,
+    }),
+    prompt: buildCompetitorCandidatePrompt(input),
+    system: buildCompetitorCandidateSystemPrompt([
+      "Fallback mode: do not call tools.",
+      "Use only the supplied brand profile, comparison sets, and research journeys.",
+      "If the profile does not support direct competitors confidently, return an empty competitor list.",
+    ]),
+    providerOptions: ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
+    temperature: 0,
+  })
+
+  return output
+}
 
 function dedupeCompetitors(competitors: OnboardingCompetitor[]) {
   const seen = new Set<string>()
@@ -37,42 +96,26 @@ export async function generateCompetitorCandidates(input: {
   website: string
 }) {
   try {
+    const searchTools = getOnboardingSearchTools()
+    const searchLoopControl = createSingleSearchStructuredOutputLoopControl(
+      searchTools,
+      "[onboarding] Competitor candidate search disabled tools for final structured output"
+    )
+
     const { output } = await generateText({
-      model: getLanguageModel("openai", {
-        capability: "webSearch",
-        modelId: SEARCH_ASSISTED_MODEL_ID,
-      }),
+      model: getOnboardingSearchModel(),
       output: Output.object({
         description:
           "Structured direct competitor candidates for the current brand profile.",
         name: "onboarding_competitor_candidates",
         schema: onboardingCompetitorRecoverySchema,
       }),
-      prompt: [
-        `Company: ${input.companyName}`,
-        `Website: ${input.website}`,
-        `Primary category: ${input.brandProfile.primaryCategory}`,
-        `Secondary categories: ${input.brandProfile.secondaryCategories.join(", ") || "(none)"}`,
-        `Description: ${input.brandProfile.detailedDescription}`,
-        `Target customers: ${input.brandProfile.targetCustomers.join(", ") || "(none)"}`,
-        `Differentiators: ${input.brandProfile.differentiators.join(", ") || "(none)"}`,
-        `Comparison sets: ${input.brandProfile.comparisonSets.join(", ") || "(none)"}`,
-        `Research journeys: ${input.brandProfile.researchJourneys.join(", ") || "(none)"}`,
-      ].join("\n"),
-      system: buildGatewayStructuredOutputSystemPrompt([
-        "Find direct or near-direct competitors for the supplied brand profile.",
-        "Search for the brand name and domain first, then the category and comparison terms buyers use.",
-        "Use search-supported category overlap and buyer overlap.",
-        "Prefer official competitor homepages and high-signal comparison pages.",
-        "Exclude the input company, agencies, publishers, marketplaces, partners, and obvious non-competitors unless the overlap is direct.",
-        "Return an empty competitor list rather than weak guesses.",
-        "Return only the schema fields.",
-      ]),
+      prompt: buildCompetitorCandidatePrompt(input),
+      system: buildCompetitorCandidateSystemPrompt(),
+      providerOptions: ONBOARDING_SEARCH_PROVIDER_OPTIONS,
       temperature: 0,
-      tools: {
-        web_search: getOpenAiWebSearchTool(),
-      },
-      stopWhen: stepCountIs(WEB_RESEARCH_MAX_STEPS),
+      tools: searchTools,
+      ...searchLoopControl,
       onStepFinish({ finishReason, stepNumber, text, toolCalls, toolResults, usage }) {
         console.log("[onboarding] Competitor candidate step finished", {
           finishReason,
@@ -96,6 +139,16 @@ export async function generateCompetitorCandidates(input: {
       })
     }
 
-    throw error
+    console.warn("[onboarding] Competitor candidate search failed, using fallback", {
+      error: error instanceof Error ? error.message : error,
+      website: input.website,
+    })
+
+    const fallbackOutput =
+      await generateCompetitorCandidatesWithStructuredFallback(input)
+
+    return dedupeCompetitors(
+      onboardingCompetitorRecoverySchema.parse(fallbackOutput).competitors
+    ).slice(0, 10)
   }
 }

@@ -4,7 +4,10 @@ import {
   buildGatewayStructuredOutputSystemPrompt,
   createGatewayStructuredObjectOutput,
 } from "@/lib/ai/gateway-structured-output"
-import { getLanguageModel } from "@/lib/ai/provider-config"
+import {
+  getOnboardingStructuredOutputModel,
+  ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
+} from "@/lib/onboarding/ai-config"
 import {
   onboardingBrandProfileSchema,
   onboardingGatewayBrandProfileSchema,
@@ -105,9 +108,7 @@ export async function buildBrandProfileStep(
   try {
     if (input.scrapedPages.length > 0) {
       const { output } = await generateText({
-        model: getLanguageModel("openai", {
-          capability: "structuredOutput",
-        }),
+        model: getOnboardingStructuredOutputModel(),
         output: createGatewayStructuredObjectOutput({
           description:
             "Structured brand profile synthesis for onboarding analysis including category, customers, jobs, products, pricing, geography, careers, and warnings.",
@@ -141,6 +142,7 @@ export async function buildBrandProfileStep(
           "warnings should stay empty unless the evidence itself creates a meaningful brand-profile caveat.",
           "Return only the schema fields.",
         ]),
+        providerOptions: ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
         temperature: 0,
       })
 
