@@ -25,13 +25,13 @@ export async function finalizeRunStep(input: PromptedState) {
       metadata: {
         summaries: {
           competitorCount: input.competitors.length,
-          selectedPageCount: input.selectedPages.length,
+          selectedPageCount: 1,
           topicCount: input.topics.length,
         },
         timings,
       },
     },
-    selected_url_count: input.selectedPages.length,
+    selected_url_count: 1,
     status: "completed",
     warnings,
   })

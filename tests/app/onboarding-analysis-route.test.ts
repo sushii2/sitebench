@@ -43,7 +43,7 @@ describe("POST /api/onboarding/analysis", () => {
     })
     mockStartOnboardingAnalysisRun.mockResolvedValue({
       analysisId: "analysis-1",
-      status: "mapping",
+      status: "scraping",
       warnings: [],
     })
   })
@@ -109,7 +109,7 @@ describe("POST /api/onboarding/analysis", () => {
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toEqual({
       analysisId: "analysis-1",
-      status: "mapping",
+      status: "scraping",
       warnings: [],
     })
     expect(mockCreateAuthenticatedOnboardingClient).toHaveBeenCalledWith(

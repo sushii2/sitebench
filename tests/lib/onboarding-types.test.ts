@@ -2,19 +2,24 @@ import { asSchema } from "ai"
 import { describe, expect, it } from "vitest"
 
 import {
+  onboardingAnalysisStartResponseSchema,
   onboardingBrandProfileSchema,
   onboardingCatalogSchema,
   onboardingCompetitorRecoverySchema,
   onboardingCompetitorScoringPayloadSchema,
   onboardingCriticalPageSelectionSchema,
+  onboardingEnhancedBrandProfileSchema,
   onboardingGatewayBrandProfileSchema,
   onboardingGatewayCatalogSchema,
   onboardingGatewayCriticalPageSelectionSchema,
+  onboardingGatewayEnhancedBrandProfileSchema,
   onboardingGatewayHomepageClassificationSchema,
+  onboardingGatewaySeedBrandProfileSchema,
   onboardingGatewayTopicClusterSchema,
   onboardingHomepageClassificationSchema,
   onboardingPromptIntentSchema,
   onboardingPromptFormulaPayloadSchema,
+  onboardingSeedBrandProfileSchema,
   onboardingTopicPromptRequestSchema,
 } from "@/lib/onboarding/types"
 
@@ -24,6 +29,10 @@ function collectGatewaySchemaIssues(
 ): string[] {
   const issues: string[] = []
   const type = schema.type
+
+  if (typeof schema.format === "string") {
+    issues.push(`${path} must not declare format=${schema.format}`)
+  }
 
   if (type === "object") {
     const properties = (schema.properties ?? {}) as Record<string, unknown>
@@ -243,6 +252,218 @@ describe("onboarding structured output schemas", () => {
     expect(result.success).toBe(true)
   })
 
+  it("accepts homepage seed and enhancement outputs for the homepage-only analysis flow", () => {
+    const seedResult = onboardingSeedBrandProfileSchema.safeParse({
+      brandName: "Acme",
+      confidence: {
+        audiences: 0.7,
+        businessType: 0.82,
+        overall: 0.8,
+        pricing: 0.3,
+        primaryCategory: 0.9,
+        productsOrServices: 0.86,
+      },
+      businessType: "saas",
+      conversionActions: [
+        {
+          action: "book a demo",
+          evidence: "Book a demo to automate investigations.",
+          type: "book_demo",
+        },
+      ],
+      differentiators: [
+        {
+          claim: "Built for lean SOC teams.",
+          evidence: "Security automation for lean SOC teams.",
+        },
+      ],
+      domain: "acme.com",
+      homepageUrl: "https://www.acme.com",
+      missingContext: ["Pricing is not stated on the homepage."],
+      oneSentenceDescription:
+        "Acme provides security automation software for lean SOC teams.",
+      painPoints: [
+        {
+          evidence: "automate investigations",
+          painPoint: "manual investigations",
+        },
+      ],
+      pricingSignals: [],
+      primaryCategory: "security automation",
+      productsOrServices: [
+        {
+          description: "Security automation software for SOC teams.",
+          evidence: "Security automation for lean SOC teams.",
+          name: "security automation platform",
+        },
+      ],
+      proofSignals: [],
+      secondaryCategories: ["incident response automation"],
+      siteVocabulary: {
+        audienceTerms: ["SOC teams"],
+        brandTerms: ["Acme"],
+        categoryTerms: ["security automation"],
+        comparisonTerms: [],
+        conversionTerms: ["book a demo"],
+        pricingTerms: [],
+        productTerms: ["security automation"],
+        proofTerms: [],
+        trustTerms: [],
+        useCaseTerms: ["automate investigations"],
+      },
+      targetAudiences: [
+        {
+          audience: "lean SOC teams",
+          description: "Security operations teams with limited headcount.",
+          evidence: "Security automation for lean SOC teams.",
+        },
+      ],
+      trustSignals: [],
+      useCases: [
+        {
+          description: "Automate security investigations.",
+          evidence: "Book a demo to automate investigations.",
+          useCase: "security investigation automation",
+        },
+      ],
+      valuePropositions: [
+        {
+          claim: "Helps SOC teams automate investigations.",
+          evidence: "Book a demo to automate investigations.",
+        },
+      ],
+    })
+
+    const enhancedResult = onboardingEnhancedBrandProfileSchema.safeParse({
+      brand: {
+        businessType: "saas",
+        categoryConfidence: 0.9,
+        domain: "acme.com",
+        homepageUrl: "https://www.acme.com",
+        name: "Acme",
+        primaryCategory: "security automation",
+      },
+      buyingJourney: {
+        brandAwareQueries: ["Is Acme a strong security automation platform?"],
+        comparisonQueries: ["Acme vs Tines for lean SOC teams"],
+        followUpQueries: ["What does Acme need for implementation?"],
+        problemAwareQueries: ["How can lean SOC teams automate investigations?"],
+        solutionAwareQueries: [
+          "What security automation tools support lean SOC teams?",
+        ],
+        transactionalQueries: ["Book a demo for security automation software"],
+      },
+      externalCategoryContext: {
+        adjacentCategories: ["SOAR"],
+        categoryLanguage: ["security automation", "SOAR"],
+        categoryNames: ["security automation platforms"],
+        commonBuyerQuestions: [
+          "Which security automation platforms fit lean SOC teams?",
+        ],
+        commonComparisonPatterns: ["Acme vs Tines"],
+        substituteSolutions: ["manual playbooks"],
+      },
+      firstPartySummary: {
+        conversionActions: ["book a demo"],
+        differentiators: ["designed for lean SOC teams"],
+        oneSentenceDescription:
+          "Acme provides security automation software for lean SOC teams.",
+        productsOrServices: ["security automation platform"],
+        targetAudiences: ["lean SOC teams"],
+        useCases: ["automate investigations"],
+        valuePropositions: ["reduce manual security work"],
+      },
+      reputationContext: {
+        likelyReputationQuestions: ["Is Acme reliable for SOC workflows?"],
+        qualityQuestions: ["Does Acme handle complex investigations well?"],
+        riskQuestions: [
+          "What implementation risks do buyers mention for security automation tools?",
+        ],
+        trustQuestions: ["Is Acme secure enough for enterprise SOC teams?"],
+        valueQuestions: ["Is Acme worth the cost for lean SOC teams?"],
+      },
+      sourceNotes: [
+        {
+          claim: "Security automation is standard category language.",
+          confidence: 0.86,
+          sourceType: "web_search",
+        },
+        {
+          claim: "Acme positions itself for lean SOC teams.",
+          confidence: 0.92,
+          sourceType: "first_party_seed",
+        },
+      ],
+      geoPromptStrategy: {
+        competitorPromptGuidance: {
+          comparisonAngles: [
+            "incident investigation automation depth",
+            "implementation speed for lean SOC teams",
+          ],
+          competitorsToPrioritize: ["Tines", "Torq"],
+          recommendedCompetitorPromptShare:
+            "20-30% of prompts within the comparison cluster",
+          shouldIncludeCompetitorSpecificPrompts: true,
+        },
+        recommendedTopicClusters: [
+          {
+            description:
+              "Demand capture for teams evaluating security automation platforms for lean SOC operations.",
+            name: "security automation evaluation",
+            promptIntentsToInclude: [
+              "brand_aware",
+              "informational",
+              "comparison",
+              "recommendation",
+              "constraint_based",
+              "transactional",
+              "reputational",
+              "follow_up",
+            ],
+            whyThisClusterMatters:
+              "It captures high-intent research from buyers moving from category education into shortlist decisions.",
+          },
+          {
+            description:
+              "Competitor-specific prompts that test when buyers name Acme alongside direct alternatives.",
+            name: "competitor-specific comparisons",
+            promptIntentsToInclude: [
+              "comparison",
+              "recommendation",
+              "constraint_based",
+              "reputational",
+              "follow_up",
+            ],
+            whyThisClusterMatters:
+              "It measures whether the brand appears in direct comparison and alternative-seeking queries against named competitors.",
+          },
+        ],
+      },
+      uncertainties: ["External search evidence is still thin on pricing specifics."],
+    })
+
+    expect(seedResult.success).toBe(true)
+    expect(enhancedResult.success).toBe(true)
+  })
+
+  it("accepts the homepage-only seeding and enhancing workflow phases", () => {
+    expect(
+      onboardingAnalysisStartResponseSchema.safeParse({
+        analysisId: "analysis-1",
+        status: "seeding",
+        warnings: [],
+      }).success
+    ).toBe(true)
+
+    expect(
+      onboardingAnalysisStartResponseSchema.safeParse({
+        analysisId: "analysis-1",
+        status: "enhancing",
+        warnings: [],
+      }).success
+    ).toBe(true)
+  })
+
   it("accepts prompt formula payloads grounded in goal, category, persona, constraint, and context", () => {
     const result = onboardingPromptFormulaPayloadSchema.safeParse({
       topics: [
@@ -272,7 +493,9 @@ describe("onboarding structured output schemas", () => {
       onboardingGatewayBrandProfileSchema,
       onboardingGatewayCatalogSchema,
       onboardingGatewayCriticalPageSelectionSchema,
+      onboardingGatewayEnhancedBrandProfileSchema,
       onboardingGatewayHomepageClassificationSchema,
+      onboardingGatewaySeedBrandProfileSchema,
       onboardingGatewayTopicClusterSchema,
     }
 
@@ -289,5 +512,24 @@ describe("onboarding structured output schemas", () => {
         `${schemaName} must satisfy the AI Gateway structured-output requirements`
       ).toEqual([])
     }
+  })
+
+  it("keeps competitors out of the seed and enhance schemas while allowing GEO strategy on enhance only", async () => {
+    const seedJsonSchema = (await asSchema(onboardingGatewaySeedBrandProfileSchema)
+      .jsonSchema) as {
+      properties?: Record<string, unknown>
+    }
+    const enhanceJsonSchema = (
+      await asSchema(onboardingGatewayEnhancedBrandProfileSchema).jsonSchema
+    ) as {
+      properties?: Record<string, unknown>
+    }
+
+    expect(seedJsonSchema.properties).not.toHaveProperty("competitors")
+    expect(seedJsonSchema.properties).not.toHaveProperty("geoPromptStrategy")
+    expect(seedJsonSchema.properties).not.toHaveProperty("pageDiscoveryPlan")
+    expect(enhanceJsonSchema.properties).not.toHaveProperty("competitors")
+    expect(enhanceJsonSchema.properties).toHaveProperty("geoPromptStrategy")
+    expect(enhanceJsonSchema.properties).not.toHaveProperty("pageDiscoveryPlan")
   })
 })

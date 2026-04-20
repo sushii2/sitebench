@@ -53,7 +53,7 @@ export async function createSiteCrawlRun(
     result_json: null,
     selected_url_count: 0,
     started_at: new Date().toISOString(),
-    status: "mapping" satisfies SiteCrawlRunStatus,
+    status: "scraping" satisfies SiteCrawlRunStatus,
     trigger_type: input.triggerType ?? "onboarding",
     workflow_run_id: null,
     warnings: [],

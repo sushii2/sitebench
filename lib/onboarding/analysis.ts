@@ -89,7 +89,7 @@ export async function startOnboardingAnalysisRun(
     const workflowRun = await start(onboardingAnalysisWorkflow, [workflowInput])
 
     const updatedRun = await updateSiteCrawlRun(client, run.id, {
-      status: "mapping",
+      status: "scraping",
       workflow_run_id: workflowRun.runId,
       warnings: [],
     })

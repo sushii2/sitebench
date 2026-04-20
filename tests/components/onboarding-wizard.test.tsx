@@ -419,7 +419,7 @@ beforeEach(() => {
 
   mockStartOnboardingAnalysis.mockResolvedValue({
     analysisId: "analysis-1",
-    status: "mapping",
+    status: "scraping",
     warnings: [],
   })
   mockPollOnboardingAnalysis.mockResolvedValue({
@@ -789,7 +789,7 @@ describe("Onboarding wizard", () => {
     mockPollOnboardingAnalysis
       .mockResolvedValueOnce({
         analysisId: "analysis-1",
-        status: "planning",
+        status: "enhancing",
         warnings: [],
       })
       .mockResolvedValueOnce({
@@ -1199,12 +1199,12 @@ describe("Onboarding wizard", () => {
     mockStartOnboardingAnalysis
       .mockResolvedValueOnce({
         analysisId: "analysis-1",
-        status: "mapping",
+        status: "scraping",
         warnings: [],
       })
       .mockResolvedValueOnce({
         analysisId: "analysis-2",
-        status: "mapping",
+        status: "scraping",
         warnings: [],
       })
     mockPollOnboardingAnalysis

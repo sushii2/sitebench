@@ -2,12 +2,8 @@ import { NextResponse } from "next/server"
 
 import {
   authenticateOnboardingRequest,
-  buildFallbackOnboardingSuggestions,
-  createEmptyOnboardingBrandResponse,
-  mergeOnboardingWarnings,
-  normalizeBrandOnboarding,
+  generateCompatibilityOnboardingSuggestions,
   onboardingBrandRequestSchema,
-  scrapeBrandHomepage,
 } from "@/lib/onboarding"
 
 function createErrorResponse(message: string, status: number) {
@@ -43,50 +39,16 @@ export async function POST(request: Request) {
     return createErrorResponse("You must be signed in to continue.", 401)
   }
 
-  const warnings: string[] = []
-  let scrapeContext = null
-
   try {
-    scrapeContext = await scrapeBrandHomepage(parsed.data.website)
+    const suggestions = await generateCompatibilityOnboardingSuggestions(parsed.data)
+
+    return NextResponse.json(suggestions)
   } catch (error) {
-    warnings.push(
-      toMessage(
-        error,
-        "We could not inspect your homepage, so the next steps will remain manual."
-      )
+    console.error("[onboarding] Compatibility route failed", error)
+
+    return createErrorResponse(
+      toMessage(error, "Unable to generate onboarding suggestions."),
+      502
     )
-  }
-
-  if (!scrapeContext) {
-    return NextResponse.json(createEmptyOnboardingBrandResponse(warnings))
-  }
-
-  try {
-    const suggestions = await normalizeBrandOnboarding({
-      ...parsed.data,
-      context: scrapeContext,
-    })
-
-    console.log("[onboarding] Route suggestions", suggestions)
-
-    return NextResponse.json(mergeOnboardingWarnings(warnings, suggestions))
-  } catch (error) {
-    console.error("[onboarding] Normalization failed", error)
-
-    warnings.push(
-      toMessage(
-        error,
-        "We could not fully normalize your homepage, so we applied a lighter fallback."
-      )
-    )
-
-    const fallback = buildFallbackOnboardingSuggestions(
-      scrapeContext,
-      parsed.data.website
-    )
-
-    console.log("[onboarding] Route fallback suggestions", fallback)
-
-    return NextResponse.json(mergeOnboardingWarnings(warnings, fallback))
   }
 }

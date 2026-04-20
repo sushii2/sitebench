@@ -6,6 +6,8 @@ export type SiteCrawlRunStatus =
   | "planning"
   | "scraping"
   | "profiling"
+  | "seeding"
+  | "enhancing"
   | "competitors"
   | "prompting"
   | "completed"

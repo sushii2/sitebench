@@ -46,7 +46,7 @@ describe("site crawl run repository", () => {
         result_json: null,
         selected_url_count: 0,
         started_at: "2026-01-01T00:00:00.000Z",
-        status: "mapping",
+        status: "scraping",
         trigger_type: "onboarding",
         updated_at: "2026-01-01T00:00:00.000Z",
         workflow_run_id: null,

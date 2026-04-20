@@ -5,12 +5,8 @@ const mockStepCountIs = vi.fn((count: number) => ({
   count,
   type: "stepCountIs",
 }))
-const mockPerplexitySearch = vi.fn((options?: Record<string, unknown>) => ({
-  options,
-  type: "perplexity_search",
-}))
-const mockGetGatewayTools = vi.fn(() => ({
-  perplexitySearch: mockPerplexitySearch,
+const mockOpenAiWebSearchTool = vi.fn(() => ({
+  type: "web_search",
 }))
 const mockGetLanguageModel = vi.fn(
   (_providerId: string, options?: { capability?: string }) => ({
@@ -34,8 +30,8 @@ vi.mock("ai", async (importOriginal) => {
 })
 
 vi.mock("@/lib/ai/provider-config", () => ({
-  getGatewayTools: mockGetGatewayTools,
   getLanguageModel: mockGetLanguageModel,
+  getOpenAiWebSearchTool: mockOpenAiWebSearchTool,
 }))
 
 async function loadNormalizeModule() {
@@ -46,9 +42,8 @@ describe("normalizeBrandOnboarding", () => {
   beforeEach(() => {
     vi.resetModules()
     mockGenerateText.mockReset()
-    mockGetGatewayTools.mockClear()
     mockGetLanguageModel.mockClear()
-    mockPerplexitySearch.mockClear()
+    mockOpenAiWebSearchTool.mockClear()
     mockStepCountIs.mockClear()
   })
 
@@ -165,25 +160,15 @@ describe("normalizeBrandOnboarding", () => {
       description: expect.stringContaining("direct competitor recovery"),
       name: "onboarding_competitor_recovery",
     })
-    expect(mockGetGatewayTools).toHaveBeenCalledTimes(1)
-    expect(mockPerplexitySearch).toHaveBeenCalledWith({
-      country: "US",
-      maxResults: 5,
-      searchLanguageFilter: ["en"],
-    })
+    expect(mockOpenAiWebSearchTool).toHaveBeenCalledTimes(1)
     expect(tierTwoCall[0].tools).toEqual({
-      perplexity_search: {
-        options: {
-          country: "US",
-          maxResults: 5,
-          searchLanguageFilter: ["en"],
-        },
-        type: "perplexity_search",
+      web_search: {
+        type: "web_search",
       },
     })
-    expect(mockStepCountIs).toHaveBeenCalledWith(3)
+    expect(mockStepCountIs).toHaveBeenCalledWith(5)
     expect(tierTwoCall[0].stopWhen).toEqual({
-      count: 3,
+      count: 5,
       type: "stepCountIs",
     })
 

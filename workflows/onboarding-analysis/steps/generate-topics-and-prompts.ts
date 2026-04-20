@@ -47,20 +47,19 @@ export async function generateTopicsAndPromptsStep(
       companyName: input.companyName,
       competitors: input.competitors,
       description: input.brandProfile.detailedDescription,
-      scrapedPages: input.scrapedPages.map((page) => {
-        const pageSignal = input.pageSignals.find((signal) => signal.url === page.url)
-
-        return {
-          competitorCandidates: pageSignal?.competitorCandidates ?? [],
-          contentSnapshot: page.markdown,
-          entities: pageSignal?.entities ?? [],
-          evidenceSnippets: pageSignal?.evidenceSnippets ?? [],
-          intents: pageSignal?.intents ?? [],
-          pageType: page.pageRole,
-          title: page.title ?? null,
-          url: page.url,
-        }
-      }),
+      geoPromptStrategy: input.enhancedBrandProfile?.geoPromptStrategy,
+      scrapedPages: [
+        {
+          competitorCandidates: input.competitors,
+          contentSnapshot: input.homepageArtifact.markdown,
+          entities: input.brandProfile.keywords,
+          evidenceSnippets: input.brandProfile.differentiators,
+          intents: input.brandProfile.researchJourneys,
+          pageType: "homepage",
+          title: input.seedBrandProfile.brandName,
+          url: input.homepageArtifact.homepageUrl,
+        },
+      ],
       website: input.website,
     })
   } catch (error) {

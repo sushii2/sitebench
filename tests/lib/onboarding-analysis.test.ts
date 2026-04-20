@@ -43,7 +43,7 @@ describe("workflow-backed onboarding analysis", () => {
       result_json: null,
       selected_url_count: 0,
       started_at: "2026-01-01T00:00:00.000Z",
-      status: "mapping",
+      status: "scraping",
       trigger_type: "onboarding",
       updated_at: "2026-01-01T00:00:00.000Z",
       warnings: [],
@@ -63,7 +63,7 @@ describe("workflow-backed onboarding analysis", () => {
       result_json: patch.result_json ?? null,
       selected_url_count: patch.selected_url_count ?? 0,
       started_at: "2026-01-01T00:00:00.000Z",
-      status: patch.status ?? "mapping",
+      status: patch.status ?? "scraping",
       trigger_type: "onboarding",
       updated_at: "2026-01-01T00:00:00.000Z",
       warnings: patch.warnings ?? [],
@@ -106,13 +106,13 @@ describe("workflow-backed onboarding analysis", () => {
       client,
       "analysis-1",
       expect.objectContaining({
-        status: "mapping",
+        status: "scraping",
         workflow_run_id: "workflow-run-1",
       })
     )
     expect(result).toEqual({
       analysisId: "analysis-1",
-      status: "mapping",
+      status: "scraping",
       warnings: [],
     })
   })

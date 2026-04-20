@@ -1,17 +1,11 @@
-import { buildBrandProfileStep } from "@/workflows/onboarding-analysis/steps/build-brand-profile"
-import { classifyHomepageStep } from "@/workflows/onboarding-analysis/steps/classify-homepage"
-import { extractPageSignalsStep } from "@/workflows/onboarding-analysis/steps/extract-page-signals"
+import { buildSeedBrandProfileStep } from "@/workflows/onboarding-analysis/steps/build-seed-brand-profile"
+import { enhanceBrandProfileStep } from "@/workflows/onboarding-analysis/steps/enhance-brand-profile"
 import { failRunStep } from "@/workflows/onboarding-analysis/steps/fail-run"
 import { finalizeRunStep } from "@/workflows/onboarding-analysis/steps/finalize-run"
 import { generateCompetitorCandidatesStep } from "@/workflows/onboarding-analysis/steps/generate-competitor-candidates"
 import { generateTopicsAndPromptsStep } from "@/workflows/onboarding-analysis/steps/generate-topics-and-prompts"
 import { initializeRunStep } from "@/workflows/onboarding-analysis/steps/initialize-run"
-import { mapWebsiteStep } from "@/workflows/onboarding-analysis/steps/map-website"
-import { prefilterMappedPagesStep } from "@/workflows/onboarding-analysis/steps/prefilter-mapped-pages"
 import { scrapeHomepageStep } from "@/workflows/onboarding-analysis/steps/scrape-homepage"
-import { scrapeSelectedPagesStep } from "@/workflows/onboarding-analysis/steps/scrape-selected-pages"
-import { scoreCompetitorsStep } from "@/workflows/onboarding-analysis/steps/score-competitors"
-import { selectCriticalPagesStep } from "@/workflows/onboarding-analysis/steps/select-critical-pages"
 import type { OnboardingAnalysisWorkflowInput } from "@/workflows/onboarding-analysis/types"
 
 export type { OnboardingAnalysisWorkflowInput } from "@/workflows/onboarding-analysis/types"
@@ -23,17 +17,11 @@ export async function onboardingAnalysisWorkflow(
 
   try {
     const initialized = await initializeRunStep(input)
-    const mapped = await mapWebsiteStep(initialized)
-    const homepage = await scrapeHomepageStep(mapped)
-    const classified = await classifyHomepageStep(homepage)
-    const prefiltered = await prefilterMappedPagesStep(classified)
-    const selected = await selectCriticalPagesStep(prefiltered)
-    const scraped = await scrapeSelectedPagesStep(selected)
-    const signaled = await extractPageSignalsStep(scraped)
-    const profiled = await buildBrandProfileStep(signaled)
+    const homepage = await scrapeHomepageStep(initialized)
+    const seeded = await buildSeedBrandProfileStep(homepage)
+    const profiled = await enhanceBrandProfileStep(seeded)
     const generatedCompetitors = await generateCompetitorCandidatesStep(profiled)
-    const scoredCompetitors = await scoreCompetitorsStep(generatedCompetitors)
-    const prompted = await generateTopicsAndPromptsStep(scoredCompetitors)
+    const prompted = await generateTopicsAndPromptsStep(generatedCompetitors)
 
     return await finalizeRunStep(prompted)
   } catch (error) {

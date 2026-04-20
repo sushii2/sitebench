@@ -55,6 +55,40 @@ describe("scrapeBrandHomepage", () => {
 
     logSpy.mockRestore()
   })
+
+  it("retries empty scrape responses before failing with a manual follow-up message", async () => {
+    mockScrape.mockResolvedValue({})
+
+    const { scrapeBrandHomepageArtifact } = await loadFirecrawlModule()
+
+    await expect(scrapeBrandHomepageArtifact("acme.com")).rejects.toThrow(
+      "Failed to fetch brand profile. Continue manually."
+    )
+    expect(mockScrape).toHaveBeenCalledTimes(4)
+  })
+
+  it("uses the first non-empty scrape response after transient empty responses", async () => {
+    mockScrape
+      .mockResolvedValueOnce({})
+      .mockResolvedValueOnce({
+        html: "<html><body><h1>Acme</h1></body></html>",
+        markdown: "# Acme",
+        metadata: {
+          sourceURL: "https://www.acme.com",
+        },
+      })
+
+    const { scrapeBrandHomepageArtifact } = await loadFirecrawlModule()
+
+    await expect(scrapeBrandHomepageArtifact("acme.com")).resolves.toMatchObject({
+      domain: "acme.com",
+      homepageUrl: "https://www.acme.com",
+      html: "<html><body><h1>Acme</h1></body></html>",
+      markdown: "# Acme",
+      normalizedHomepageUrl: "https://www.acme.com/",
+    })
+    expect(mockScrape).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe("toFirecrawlDocuments", () => {

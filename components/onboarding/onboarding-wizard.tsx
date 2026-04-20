@@ -129,15 +129,13 @@ const promptVariantOrder: ReadonlyArray<
 ]
 
 const analysisPhaseLabel: Record<string, string> = {
-  classifying: "Classifying the homepage",
   completed: "Analysis complete",
-  competitors: "Scoring likely competitors",
+  competitors: "Generating likely competitors",
+  enhancing: "Enhancing the brand profile",
   failed: "Analysis failed",
-  mapping: "Mapping the website",
-  planning: "Planning the critical pages",
-  profiling: "Building the brand profile",
   prompting: "Generating topics and prompts",
-  scraping: "Scraping selected pages",
+  scraping: "Scraping the homepage",
+  seeding: "Building the homepage seed",
 }
 
 const stepMeta = [
@@ -1372,7 +1370,7 @@ export function OnboardingWizard({
         analysisPollCountRef.current = 0
         analysisPollingStartedAtRef.current = Date.now()
         setAnalysisState("starting")
-        setAnalysisPhase("mapping")
+        setAnalysisPhase("scraping")
 
         try {
           const started = await startOnboardingAnalysis({

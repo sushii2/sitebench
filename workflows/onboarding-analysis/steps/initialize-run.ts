@@ -22,7 +22,7 @@ export async function initializeRunStep(
   await persistRunPhase({
     analysisId: input.analysisId,
     authToken: input.authToken,
-    status: "mapping",
+    status: "scraping",
     warnings: [],
   })
 
