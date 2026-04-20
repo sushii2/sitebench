@@ -2,14 +2,15 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Add01Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
-  Cancel01Icon,
   Delete02Icon,
   Edit02Icon,
+  RefreshIcon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons"
 
@@ -46,12 +47,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
 import {
   Field,
   FieldDescription,
@@ -59,22 +54,22 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  AnalysisTimeline,
+  type AnalysisStatus,
+} from "@/components/onboarding/analysis-timeline"
 import {
   OnboardingSidebar,
   type SidebarStep,
 } from "@/components/onboarding/onboarding-sidebar"
 import { PromptEditDialog } from "@/components/onboarding/prompt-edit-dialog"
-import { ProviderLogos } from "@/components/onboarding/provider-logos"
+import {
+  TopicsPromptsTable,
+  type TopicRowDraft,
+} from "@/components/onboarding/topics-prompts-table"
+import { UnlockingOverlay } from "@/components/onboarding/unlocking-overlay"
 
 type WizardCompetitor = {
   id: string
@@ -103,13 +98,9 @@ type ValidationState = {
   description?: string
   step1CompanyName?: string
   step1Website?: string
-  step3?: string
-  step4?: string
   topicPromptErrors: Record<string, string | undefined>
-  topicInput?: string
 }
 
-type AnalysisUiState = "idle" | "starting" | "polling" | "completed" | "failed"
 const ANALYSIS_INITIAL_POLL_INTERVAL_MS = 1600
 const ANALYSIS_MAX_POLL_INTERVAL_MS = 5000
 
@@ -127,16 +118,6 @@ const promptVariantOrder: ReadonlyArray<
   "integration",
   "competitor_specific",
 ]
-
-const analysisPhaseLabel: Record<string, string> = {
-  completed: "Analysis complete",
-  competitors: "Generating likely competitors",
-  enhancing: "Enhancing the brand profile",
-  failed: "Analysis failed",
-  prompting: "Generating topics and prompts",
-  scraping: "Scraping the homepage",
-  seeding: "Building the homepage seed",
-}
 
 const stepMeta = [
   {
@@ -414,10 +395,6 @@ function mergeTopicDraftCollections(
   ]
 }
 
-function getPromptIntentLabel(prompt: WizardPromptDraft) {
-  return prompt.intent ? prompt.intent.replace(/_/g, " ") : "custom"
-}
-
 function getPromptStatusRank(prompt: WizardPromptDraft) {
   switch (prompt.scoreStatus) {
     case "scored":
@@ -536,7 +513,7 @@ export function OnboardingWizard({
     getInitialCompetitors(brand)
   )
   const [analysisId, setAnalysisId] = React.useState<string | null>(null)
-  const [analysisState, setAnalysisState] = React.useState<AnalysisUiState>("idle")
+  const [analysisState, setAnalysisState] = React.useState<AnalysisStatus>("idle")
   const [analysisPhase, setAnalysisPhase] = React.useState<string | null>(null)
   const [, startAnalysisTransition] = React.useTransition()
   const [currentStep, setCurrentStep] = React.useState<StepKey>(() =>
@@ -550,14 +527,13 @@ export function OnboardingWizard({
   const [isGeneratingTopicPrompts, setIsGeneratingTopicPrompts] =
     React.useState(false)
   const [, startCatalogRefreshTransition] = React.useTransition()
-  const [prefillNotice, setPrefillNotice] = React.useState<string | null>(null)
-  const [submitError, setSubmitError] = React.useState<string | null>(null)
+  const [isCompletingSetup, setIsCompletingSetup] = React.useState(false)
   const [excludedTopicNames, setExcludedTopicNames] = React.useState<string[]>([])
   const [excludedPromptTexts, setExcludedPromptTexts] = React.useState<string[]>([])
   const [topicSearch, setTopicSearch] = React.useState("")
   const deferredTopicSearch = React.useDeferredValue(topicSearch)
   const [intentFilter, setIntentFilter] = React.useState<
-    WizardPromptDraft["intent"] | "all"
+    NonNullable<WizardPromptDraft["intent"]> | "all"
   >("all")
   const deferredIntentFilter = React.useDeferredValue(intentFilter)
   const [sourceFilter, setSourceFilter] = React.useState<
@@ -686,7 +662,12 @@ export function OnboardingWizard({
           )
         )
         setOpenTopicIds(new Set<string>())
-        setPrefillNotice(formatWarnings(nextWarnings))
+        const warningMessage = formatWarnings(nextWarnings)
+        if (warningMessage) {
+          toast.warning("Analysis finished with warnings", {
+            description: warningMessage,
+          })
+        }
         setAnalysisState("completed")
         setAnalysisPhase("completed")
         setCurrentStep(2)
@@ -755,23 +736,23 @@ export function OnboardingWizard({
           if (result.status === "completed" && !result.result) {
             setAnalysisState("failed")
             setAnalysisPhase("failed")
-            setPrefillNotice(
-              "Analysis completed without usable results. Continue manually."
-            )
+            toast.error("Analysis completed without usable results", {
+              description: "Continue manually from the next step.",
+            })
             return
           }
 
           if (result.status === "failed") {
             setAnalysisState("failed")
             setAnalysisPhase("failed")
-            setPrefillNotice(
-              formatWarnings(result.warnings) ??
-                "We could not analyze the site. Continue manually."
-            )
+            toast.error("We could not analyze the site", {
+              description:
+                formatWarnings(result.warnings) ??
+                "Continue manually from the next step.",
+            })
             return
           }
 
-          setPrefillNotice(formatWarnings(result.warnings))
           shouldScheduleNextPoll = true
         } catch (error) {
           if (isCancelled) {
@@ -780,11 +761,12 @@ export function OnboardingWizard({
 
           setAnalysisState("failed")
           setAnalysisPhase("failed")
-          setPrefillNotice(
-            error instanceof Error
-              ? error.message
-              : "We could not analyze the site. Continue manually."
-          )
+          toast.error("We could not analyze the site", {
+            description:
+              error instanceof Error
+                ? error.message
+                : "Continue manually from the next step.",
+          })
         }
 
         if (!isCancelled && shouldScheduleNextPoll) {
@@ -817,13 +799,6 @@ export function OnboardingWizard({
     })
   }
 
-  function setTopicMessage(message?: string) {
-    setValidation((current) => ({
-      ...current,
-      topicInput: message,
-    }))
-  }
-
   function addTopicFromInput() {
     const candidate = topicInput.trim()
 
@@ -837,17 +812,21 @@ export function OnboardingWizard({
     ])
 
     if (topics.length >= 12) {
-      setTopicMessage("You can add up to 12 topics.")
+      toast.error("Topic limit reached", {
+        description: "You can add up to 12 topics.",
+      })
       return
     }
 
     if (normalizedTopics.length === topics.length) {
-      setTopicMessage("That topic is already added.")
+      toast.error("That topic is already added.")
       return
     }
 
     if (normalizedTopics.length > 12) {
-      setTopicMessage("You can add up to 12 topics.")
+      toast.error("Topic limit reached", {
+        description: "You can add up to 12 topics.",
+      })
       return
     }
 
@@ -867,12 +846,6 @@ export function OnboardingWizard({
       current.filter((value) => normalizeTopicKey(value) !== topicName)
     )
     setTopicInput("")
-    setTopicMessage(undefined)
-    setValidation((current) => ({
-      ...current,
-      step3: undefined,
-      step4: undefined,
-    }))
   }
 
   function removeTopicById(topicId: string) {
@@ -898,7 +871,7 @@ export function OnboardingWizard({
     if (!topic) return
 
     if (!candidate) {
-      setTopicMessage("Topic cannot be empty.")
+      toast.error("Topic cannot be empty.")
       return
     }
 
@@ -909,12 +882,12 @@ export function OnboardingWizard({
     const nextName = normalized.at(-1)
 
     if (!nextName) {
-      setTopicMessage("That topic is invalid.")
+      toast.error("That topic is invalid.")
       return
     }
 
     if (normalized.length === otherTopics.length) {
-      setTopicMessage("That topic is already added.")
+      toast.error("That topic is already added.")
       return
     }
 
@@ -937,7 +910,6 @@ export function OnboardingWizard({
     )
     setEditingTopicId(null)
     setTopicEditValue("")
-    setTopicMessage(undefined)
   }
 
   function updateCompetitor(
@@ -972,10 +944,9 @@ export function OnboardingWizard({
   function addCompetitorRow() {
     setCompetitors((current) => {
       if (current.length >= 20) {
-        setValidation((previous) => ({
-          ...previous,
-          step4: "You can add up to 20 competitors.",
-        }))
+        toast.error("Competitor limit reached", {
+          description: "You can add up to 20 competitors.",
+        })
 
         return current
       }
@@ -1060,22 +1031,12 @@ export function OnboardingWizard({
     )
 
     if (populatedCompetitors.length < 3) {
-      setValidation({
-        competitors: [],
-        step3: "Add at least 3 competitors.",
-        topicPromptErrors: {},
-      })
-
+      toast.error("Add at least 3 competitors.")
       return false
     }
 
     if (populatedCompetitors.length > 20) {
-      setValidation({
-        competitors: [],
-        step3: "You can add up to 20 competitors.",
-        topicPromptErrors: {},
-      })
-
+      toast.error("You can add up to 20 competitors.")
       return false
     }
 
@@ -1110,9 +1071,9 @@ export function OnboardingWizard({
     if (hasErrors) {
       setValidation({
         competitors: competitorErrors,
-        step3: "Fix the competitor rows before continuing.",
         topicPromptErrors: {},
       })
+      toast.error("Fix the competitor rows before continuing.")
 
       return false
     }
@@ -1124,11 +1085,7 @@ export function OnboardingWizard({
 
   function validateStepFour() {
     if (topics.length < 3) {
-      setValidation((current) => ({
-        ...current,
-        step4: "Add at least 3 topics.",
-      }))
-
+      toast.error("Add at least 3 topics.")
       return false
     }
 
@@ -1161,16 +1118,15 @@ export function OnboardingWizard({
     if (Object.keys(nextTopicPromptErrors).length > 0) {
       setValidation((current) => ({
         ...current,
-        step4: "Fix the topic prompts before continuing.",
         topicPromptErrors: nextTopicPromptErrors,
       }))
+      toast.error("Fix the topic prompts before continuing.")
 
       return false
     }
 
     setValidation((current) => ({
       ...current,
-      step4: undefined,
       topicPromptErrors: {},
     }))
 
@@ -1179,7 +1135,6 @@ export function OnboardingWizard({
 
   const refreshCatalog = React.useCallback(async () => {
     setIsGeneratingTopicPrompts(true)
-    setSubmitError(null)
 
     try {
       const populatedCompetitors = competitors
@@ -1218,14 +1173,17 @@ export function OnboardingWizard({
           mergeTopicDraftCollections(current, buildGeneratedTopicDrafts(result.topics))
         )
         setOpenTopicIds(new Set<string>())
-        setPrefillNotice(formatWarnings(result.warnings))
+        const warningMessage = formatWarnings(result.warnings)
+        if (warningMessage) {
+          toast.warning("Catalog refresh warning", {
+            description: warningMessage,
+          })
+        }
       })
     } catch (error) {
-      setSubmitError(
-        error instanceof Error
-          ? error.message
-          : "Unable to refresh the GEO catalog."
-      )
+      toast.error("Unable to refresh the GEO catalog", {
+        description: error instanceof Error ? error.message : undefined,
+      })
     } finally {
       setIsGeneratingTopicPrompts(false)
     }
@@ -1294,7 +1252,6 @@ export function OnboardingWizard({
     )
     setValidation((current) => ({
       ...current,
-      step4: undefined,
       topicPromptErrors: {
         ...current.topicPromptErrors,
         [topicId]: undefined,
@@ -1356,11 +1313,9 @@ export function OnboardingWizard({
     }
 
     setIsSaving(true)
-    setSubmitError(null)
 
     try {
       if (currentStep === 1) {
-        setPrefillNotice(null)
         const nextBrand = await saveBrandDraftStep(client, {
           company_name: companyName,
           website,
@@ -1384,15 +1339,21 @@ export function OnboardingWizard({
           setAnalysisState(
             started.status === "completed" ? "completed" : "polling"
           )
-          setPrefillNotice(formatWarnings(started.warnings))
+          const warningMessage = formatWarnings(started.warnings)
+          if (warningMessage) {
+            toast.warning("Analysis warning", {
+              description: warningMessage,
+            })
+          }
         } catch (error) {
           setAnalysisState("failed")
           setAnalysisPhase("failed")
-          setPrefillNotice(
-            error instanceof Error
-              ? error.message
-              : "We could not analyze the site. Continue manually."
-          )
+          toast.error("We could not analyze the site", {
+            description:
+              error instanceof Error
+                ? error.message
+                : "Continue manually from the next step.",
+          })
         }
 
         return
@@ -1410,9 +1371,9 @@ export function OnboardingWizard({
         setCurrentStep(4)
       }
     } catch (error) {
-      setSubmitError(
-        error instanceof Error ? error.message : "Unable to save this step."
-      )
+      toast.error("Unable to save this step", {
+        description: error instanceof Error ? error.message : undefined,
+      })
     } finally {
       setIsSaving(false)
     }
@@ -1444,7 +1405,7 @@ export function OnboardingWizard({
     }
 
     setIsSaving(true)
-    setSubmitError(null)
+    setIsCompletingSetup(true)
 
     try {
       const populatedCompetitors = competitors
@@ -1487,11 +1448,13 @@ export function OnboardingWizard({
       await refreshAuthState()
       router.replace("/dashboard")
     } catch (error) {
-      setSubmitError(
-        error instanceof Error
-          ? error.message
-          : "Unable to complete setup. Please try again."
-      )
+      toast.error("Unable to complete setup", {
+        description:
+          error instanceof Error
+            ? error.message
+            : "Please try again in a moment.",
+      })
+      setIsCompletingSetup(false)
     } finally {
       setIsSaving(false)
     }
@@ -1589,24 +1552,6 @@ export function OnboardingWizard({
             </p>
           </header>
 
-          {prefillNotice ? (
-            <div
-              role="status"
-              className="mb-6 rounded-md border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
-            >
-              {prefillNotice}
-            </div>
-          ) : null}
-
-          {submitError ? (
-            <div
-              role="alert"
-              className="mb-6 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-            >
-              {submitError}
-            </div>
-          ) : null}
-
           <div
             key={currentStep}
             className="flex-1 duration-300 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2"
@@ -1624,7 +1569,6 @@ export function OnboardingWizard({
                     onChange={(event) => {
                       if (currentStep === 1) {
                         resetAnalysisProgress()
-                        setPrefillNotice(null)
                       }
                       setWebsite(event.target.value)
                       setValidation((current) => ({
@@ -1655,7 +1599,6 @@ export function OnboardingWizard({
                     onChange={(event) => {
                       if (currentStep === 1) {
                         resetAnalysisProgress()
-                        setPrefillNotice(null)
                       }
                       setCompanyName(event.target.value)
                       setValidation((current) => ({
@@ -1673,42 +1616,10 @@ export function OnboardingWizard({
                 </Field>
 
                 {analysisState !== "idle" ? (
-                  <div className="rounded-md border border-dashed border-border bg-muted/30 p-4">
-                    <div className="flex items-center gap-3">
-                      {analysisState === "starting" ||
-                      analysisState === "polling" ? (
-                        <Spinner className="size-4" />
-                      ) : (
-                        <div className="size-2 rounded-full bg-amber-500" />
-                      )}
-                      <div className="space-y-0.5">
-                        <div className="text-sm font-medium">
-                          {analysisState === "failed"
-                            ? "Website analysis needs manual review"
-                            : analysisState === "completed"
-                              ? "Website analysis is ready"
-                              : "Analyzing your website context"}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {analysisState === "failed"
-                            ? "We could not finish the workflow-backed analysis. You can continue manually from the next step."
-                            : analysisState === "completed"
-                              ? "Your description, competitors, topics, and prompt variants are ready to review."
-                              : analysisPhase
-                                ? analysisPhaseLabel[analysisPhase] ??
-                                  "Preparing suggested description, topics, competitors, and prompts."
-                                : "Preparing suggested description, topics, competitors, and prompts."}
-                        </div>
-                      </div>
-                    </div>
-                    {analysisState === "starting" || analysisState === "polling" ? (
-                      <div className="mt-4 grid gap-3 md:grid-cols-2">
-                        <Skeleton className="h-20 w-full" />
-                        <Skeleton className="h-20 w-full" />
-                        <Skeleton className="h-28 w-full md:col-span-2" />
-                      </div>
-                    ) : null}
-                  </div>
+                  <AnalysisTimeline
+                    status={analysisState}
+                    phase={analysisPhase}
+                  />
                 ) : null}
               </FieldGroup>
             ) : null}
@@ -1926,416 +1837,125 @@ export function OnboardingWizard({
                   })}
                 </div>
 
-                {validation.step3 ? (
-                  <FieldDescription className="text-destructive">
-                    {validation.step3}
-                  </FieldDescription>
-                ) : null}
               </div>
             ) : null}
 
             {currentStep === 4 ? (
               <div className="flex flex-col gap-6">
-                <div className="flex flex-col gap-4 rounded-lg border border-border bg-muted/20 p-4">
-                  <Field data-invalid={Boolean(validation.topicInput)}>
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <FieldLabel htmlFor="topic-input">Add a topic</FieldLabel>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => void refreshCatalog()}
-                        disabled={isSaving || isGeneratingTopicPrompts}
-                      >
-                        <HugeiconsIcon icon={ArrowRight01Icon} className="size-4" />
-                        Refresh catalog
-                      </Button>
+                <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <p className="text-sm font-medium text-foreground">
+                        Add a topic
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Minimum 3, maximum 12. Each topic needs at least 2
+                        prompts.
+                      </p>
                     </div>
-                    <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                      <Input
-                        id="topic-input"
-                        value={topicInput}
-                        placeholder="AI search"
-                        onChange={(event) => {
-                          setTopicInput(event.target.value)
-                          setTopicMessage(undefined)
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault()
-                            addTopicFromInput()
-                          }
-                        }}
-                        aria-invalid={Boolean(validation.topicInput)}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={addTopicFromInput}
-                        disabled={isSaving || isGeneratingTopicPrompts}
-                      >
-                        <HugeiconsIcon icon={Add01Icon} className="size-4" />
-                        Add topic
-                      </Button>
-                    </div>
-                    {validation.topicInput ? (
-                      <FieldDescription className="text-destructive">
-                        {validation.topicInput}
-                      </FieldDescription>
-                    ) : (
-                      <FieldDescription>
-                        Minimum 3, maximum 12. Each topic needs at least 2 prompts.
-                      </FieldDescription>
-                    )}
-                  </Field>
-
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void refreshCatalog()}
+                      disabled={isSaving || isGeneratingTopicPrompts}
+                    >
+                      <HugeiconsIcon icon={RefreshIcon} className="size-4" />
+                      Refresh catalog
+                    </Button>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     <Input
-                      aria-label="Search topics and prompts"
-                      placeholder="Search prompts, topics, or descriptions"
-                      value={topicSearch}
-                      onChange={(event) => setTopicSearch(event.target.value)}
+                      id="topic-input"
+                      value={topicInput}
+                      placeholder="AI search"
+                      onChange={(event) => setTopicInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault()
+                          addTopicFromInput()
+                        }
+                      }}
                     />
-                    <Select
-                      value={intentFilter}
-                      onValueChange={(value) =>
-                        setIntentFilter(value as WizardPromptDraft["intent"] | "all")
-                      }
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={addTopicFromInput}
+                      disabled={isSaving || isGeneratingTopicPrompts}
                     >
-                      <SelectTrigger aria-label="Filter by intent">
-                        <SelectValue placeholder="All intents" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All intents</SelectItem>
-                        <SelectItem value="brand_aware">Brand aware</SelectItem>
-                        <SelectItem value="comparison">Comparison</SelectItem>
-                        <SelectItem value="constraint_based">
-                          Constraint based
-                        </SelectItem>
-                        <SelectItem value="follow_up">Follow up</SelectItem>
-                        <SelectItem value="informational">Informational</SelectItem>
-                        <SelectItem value="local">Local</SelectItem>
-                        <SelectItem value="recommendation">
-                          Recommendation
-                        </SelectItem>
-                        <SelectItem value="reputational">
-                          Reputational
-                        </SelectItem>
-                        <SelectItem value="transactional">
-                          Transactional
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select
-                      value={sourceFilter}
-                      onValueChange={(value) =>
-                        setSourceFilter(value as WizardTopicDraft["source"] | "all")
-                      }
-                    >
-                      <SelectTrigger aria-label="Filter by source">
-                        <SelectValue placeholder="All sources" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All sources</SelectItem>
-                        <SelectItem value="ai_suggested">AI suggested</SelectItem>
-                        <SelectItem value="user_added">Custom</SelectItem>
-                        <SelectItem value="system_seeded">Seeded</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="text-xs text-muted-foreground">
-                    Reviewing {visibleTopics.length} of {topics.length} topics.
-                    {" "}
-                    Latest catalog:
-                    {" "}
-                    {catalog?.topics.length ?? topics.length} topics.
+                      <HugeiconsIcon icon={Add01Icon} className="size-4" />
+                      Add topic
+                    </Button>
                   </div>
                 </div>
 
-                {isGeneratingTopicPrompts ? (
-                  <div className="flex items-center gap-3 rounded-md border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-                    <Spinner className="size-4" />
-                    Refreshing the full GEO catalog…
-                  </div>
-                ) : null}
-
-                <div className="flex flex-col gap-4">
-                  {topics.length === 0 ? (
-                    <div className="rounded-md border border-dashed border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
-                      No topics yet. Add at least 3 to continue.
-                    </div>
-                  ) : null}
-
-                  {topics.length > 0 && visibleTopics.length === 0 ? (
-                    <div className="rounded-md border border-dashed border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
-                      No topics match the current filters.
-                    </div>
-                  ) : null}
-
-                  {visibleTopics.map((topic, topicIndex) => {
-                    const isEditingTopic = editingTopicId === topic.id
-                    const isTopicOpen =
-                      openTopicIds.has(topic.id) ||
-                      Boolean(deferredTopicSearch) ||
-                      deferredIntentFilter !== "all"
-
-                    return (
-                      <Collapsible
-                        key={topic.id}
-                        open={isTopicOpen}
-                        onOpenChange={(open) => {
-                          setOpenTopicIds((current) => {
-                            const next = new Set(current)
-                            if (open) {
-                              next.add(topic.id)
-                            } else {
-                              next.delete(topic.id)
-                            }
-                            return next
-                          })
-                        }}
-                      >
-                        <div className="rounded-lg border border-border bg-card">
-                          <div className="flex items-start justify-between gap-3 rounded-t-lg border-b bg-muted/30 px-4 py-3">
-                            <CollapsibleTrigger asChild>
-                              <button
-                                type="button"
-                                className="flex min-w-0 flex-1 items-start gap-3 text-left"
-                              >
-                                <span className="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-                                  Topic {topicIndex + 1}
-                                </span>
-                                <div className="min-w-0 space-y-2">
-                                  {isEditingTopic ? (
-                                    <Input
-                                      autoFocus
-                                      value={topicEditValue}
-                                      onChange={(event) =>
-                                        setTopicEditValue(event.target.value)
-                                      }
-                                      onKeyDown={(event) => {
-                                        if (event.key === "Enter") {
-                                          event.preventDefault()
-                                          commitTopicEdit(topic.id)
-                                        }
-                                        if (event.key === "Escape") {
-                                          event.preventDefault()
-                                          setEditingTopicId(null)
-                                          setTopicEditValue("")
-                                          setTopicMessage(undefined)
-                                        }
-                                      }}
-                                      onBlur={() => commitTopicEdit(topic.id)}
-                                      className="h-8"
-                                    />
-                                  ) : (
-                                    <div className="space-y-1">
-                                      <div className="truncate text-sm font-medium">
-                                        {topic.topicName}
-                                      </div>
-                                      <div className="text-xs text-muted-foreground">
-                                        {topic.topicDescription || "No description yet."}
-                                      </div>
-                                    </div>
-                                  )}
-                                  <div className="flex flex-wrap gap-2">
-                                    <Badge variant="outline">
-                                      {topic.prompts.length} prompts
-                                    </Badge>
-                                    <Badge variant="outline">
-                                      {topic.source === "ai_suggested"
-                                        ? "AI suggested"
-                                        : topic.source === "user_added"
-                                          ? "Custom"
-                                          : "Seeded"}
-                                    </Badge>
-                                  </div>
-                                </div>
-                              </button>
-                            </CollapsibleTrigger>
-                            <div className="flex shrink-0 items-center gap-1">
-                              {isEditingTopic ? (
-                                <Button
-                                  type="button"
-                                  size="icon-sm"
-                                  variant="ghost"
-                                  aria-label="Cancel topic edit"
-                                  onMouseDown={(event) => {
-                                    event.preventDefault()
-                                    setEditingTopicId(null)
-                                    setTopicEditValue("")
-                                    setTopicMessage(undefined)
-                                  }}
-                                >
-                                  <HugeiconsIcon
-                                    icon={Cancel01Icon}
-                                    className="size-4"
-                                  />
-                                </Button>
-                              ) : (
-                                <Button
-                                  type="button"
-                                  size="icon-sm"
-                                  variant="ghost"
-                                  aria-label={`Edit topic ${topic.topicName}`}
-                                  onClick={() => {
-                                    setEditingTopicId(topic.id)
-                                    setTopicEditValue(topic.topicName)
-                                  }}
-                                >
-                                  <HugeiconsIcon
-                                    icon={Edit02Icon}
-                                    className="size-4"
-                                  />
-                                </Button>
-                              )}
-                              <Button
-                                type="button"
-                                size="icon-sm"
-                                variant="ghost"
-                                aria-label={`Remove topic ${topic.topicName}`}
-                                onClick={() =>
-                                  setConfirmRemove({
-                                    kind: "topic",
-                                    label: topic.topicName,
-                                    onConfirm: () => removeTopicById(topic.id),
-                                  })
-                                }
-                              >
-                                <HugeiconsIcon
-                                  icon={Delete02Icon}
-                                  className="size-4"
-                                />
-                              </Button>
-                            </div>
-                          </div>
-
-                          <CollapsibleContent>
-                            <div className="flex flex-col gap-2 px-4 py-3">
-                              {topic.prompts.length === 0 ? (
-                                <div className="text-xs text-muted-foreground">
-                                  No prompts yet. Refresh the catalog to generate this topic.
-                                </div>
-                              ) : (
-                                topic.prompts.map((prompt, promptIndex) => (
-                                  <div
-                                    key={prompt.id}
-                                    className="flex flex-col gap-3 rounded-lg border border-border/60 bg-background px-4 py-3"
-                                  >
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0 text-sm">
-                                        <div className="mb-2 flex flex-wrap gap-2">
-                                          <Badge variant="outline">
-                                            Prompt {promptIndex + 1}
-                                          </Badge>
-                                          <Badge variant="outline">
-                                            {getPromptIntentLabel(prompt)}
-                                          </Badge>
-                                          <Badge variant="outline">
-                                            {prompt.addedVia === "user_created"
-                                              ? "Custom"
-                                              : "AI"}
-                                          </Badge>
-                                        </div>
-                                        <div className="line-clamp-3 text-foreground">
-                                          {prompt.promptText || (
-                                            <span className="text-muted-foreground italic">
-                                              Empty prompt
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                      <div className="flex shrink-0 items-center gap-1">
-                                        <Button
-                                          type="button"
-                                          size="icon-sm"
-                                          variant="ghost"
-                                          aria-label={`Edit prompt ${promptIndex + 1}`}
-                                          onClick={() =>
-                                            setPromptDialog({
-                                              mode: "edit",
-                                              topicId: topic.id,
-                                              topicName: topic.topicName,
-                                              promptId: prompt.id,
-                                              initialValue: prompt.promptText,
-                                            })
-                                          }
-                                        >
-                                          <HugeiconsIcon
-                                            icon={Edit02Icon}
-                                            className="size-4"
-                                          />
-                                        </Button>
-                                        <Button
-                                          type="button"
-                                          size="icon-sm"
-                                          variant="ghost"
-                                          aria-label={`Remove prompt ${promptIndex + 1}`}
-                                          onClick={() =>
-                                            setConfirmRemove({
-                                              kind: "prompt",
-                                              label: `prompt ${promptIndex + 1}`,
-                                              onConfirm: () =>
-                                                removePromptFromTopic(
-                                                  topic.id,
-                                                  prompt.id
-                                                ),
-                                            })
-                                          }
-                                        >
-                                          <HugeiconsIcon
-                                            icon={Delete02Icon}
-                                            className="size-4"
-                                          />
-                                        </Button>
-                                      </div>
-                                    </div>
-                                    <ProviderLogos
-                                      variant="compact"
-                                      label="Evaluated by"
-                                    />
-                                  </div>
-                                ))
-                              )}
-
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="self-start"
-                                onClick={() =>
-                                  setPromptDialog({
-                                    mode: "add",
-                                    topicId: topic.id,
-                                    topicName: topic.topicName,
-                                  })
-                                }
-                              >
-                                <HugeiconsIcon
-                                  icon={Add01Icon}
-                                  className="size-4"
-                                />
-                                Add prompt
-                              </Button>
-
-                              {validation.topicPromptErrors[topic.id] ? (
-                                <FieldDescription className="text-destructive">
-                                  {validation.topicPromptErrors[topic.id]}
-                                </FieldDescription>
-                              ) : null}
-                            </div>
-                          </CollapsibleContent>
-                        </div>
-                      </Collapsible>
-                    )
-                  })}
-                </div>
-
-                {validation.step4 ? (
-                  <FieldDescription className="text-destructive">
-                    {validation.step4}
-                  </FieldDescription>
-                ) : null}
+                <TopicsPromptsTable
+                  topics={visibleTopics as TopicRowDraft[]}
+                  search={topicSearch}
+                  onSearchChange={setTopicSearch}
+                  intentFilter={intentFilter}
+                  onIntentFilterChange={(value) => setIntentFilter(value)}
+                  sourceFilter={sourceFilter}
+                  onSourceFilterChange={(value) => setSourceFilter(value)}
+                  openTopicIds={openTopicIds}
+                  onToggleTopic={(topicId, open) =>
+                    setOpenTopicIds((current) => {
+                      const next = new Set(current)
+                      if (open) {
+                        next.add(topicId)
+                      } else {
+                        next.delete(topicId)
+                      }
+                      return next
+                    })
+                  }
+                  editingTopicId={editingTopicId}
+                  topicEditValue={topicEditValue}
+                  onTopicEditChange={setTopicEditValue}
+                  onStartEditTopic={(topic) => {
+                    setEditingTopicId(topic.id)
+                    setTopicEditValue(topic.topicName)
+                  }}
+                  onCommitEditTopic={(topicId) => commitTopicEdit(topicId)}
+                  onCancelEditTopic={() => {
+                    setEditingTopicId(null)
+                    setTopicEditValue("")
+                  }}
+                  onRemoveTopic={(topic) =>
+                    setConfirmRemove({
+                      kind: "topic",
+                      label: topic.topicName,
+                      onConfirm: () => removeTopicById(topic.id),
+                    })
+                  }
+                  onAddPrompt={(topic) =>
+                    setPromptDialog({
+                      mode: "add",
+                      topicId: topic.id,
+                      topicName: topic.topicName,
+                    })
+                  }
+                  onEditPrompt={(topic, prompt) =>
+                    setPromptDialog({
+                      mode: "edit",
+                      topicId: topic.id,
+                      topicName: topic.topicName,
+                      promptId: prompt.id,
+                      initialValue: prompt.promptText,
+                    })
+                  }
+                  onRemovePrompt={(topic, prompt, index) =>
+                    setConfirmRemove({
+                      kind: "prompt",
+                      label: `prompt ${index + 1}`,
+                      onConfirm: () =>
+                        removePromptFromTopic(topic.id, prompt.id),
+                    })
+                  }
+                  topicPromptErrors={validation.topicPromptErrors}
+                  totalTopicCount={topics.length}
+                  catalogTopicCount={catalog?.topics.length}
+                  isRefreshing={isGeneratingTopicPrompts}
+                />
               </div>
             ) : null}
           </div>
@@ -2431,6 +2051,8 @@ export function OnboardingWizard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <UnlockingOverlay open={isCompletingSetup} />
     </div>
   )
 }

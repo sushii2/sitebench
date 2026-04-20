@@ -257,7 +257,7 @@ describe("homepage analysis service", () => {
     mockStepCountIs.mockClear()
   })
 
-  it("builds the seed profile with raw Firecrawl inputs in a fixed prompt order", async () => {
+  it("builds the seed profile with de-duplicated Firecrawl inputs in a fixed prompt order", async () => {
     mockGenerateText.mockResolvedValue({
       output: seedBrandProfile,
     })
@@ -291,12 +291,18 @@ describe("homepage analysis service", () => {
       `FIRECRAWL_METADATA_JSON:\n${JSON.stringify(homepageArtifact.metadata, null, 2)}`
     )
     expect(generationCall.prompt).toContain(
-      `RAW_FIRECRAWL_RESPONSE_JSON:\n${JSON.stringify(homepageArtifact.rawFirecrawlResponse, null, 2)}`
+      `RAW_FIRECRAWL_RESPONSE_JSON:\n${JSON.stringify(
+        {
+          metadata: homepageArtifact.rawFirecrawlResponse.metadata,
+        },
+        null,
+        2
+      )}`
     )
     expect(generationCall.prompt).toContain(
       `HOMEPAGE_MARKDOWN:\n${homepageArtifact.markdown}`
     )
-    expect(generationCall.prompt).toContain(`HOMEPAGE_HTML:\n${homepageArtifact.html}`)
+    expect(generationCall.prompt).not.toContain(`HOMEPAGE_HTML:\n${homepageArtifact.html}`)
 
     const prompt = generationCall.prompt as string
     expect(prompt.indexOf("EXACT_HOMEPAGE_URL")).toBeLessThan(
@@ -310,9 +316,6 @@ describe("homepage analysis service", () => {
     )
     expect(prompt.indexOf("RAW_FIRECRAWL_RESPONSE_JSON")).toBeLessThan(
       prompt.indexOf("HOMEPAGE_MARKDOWN")
-    )
-    expect(prompt.indexOf("HOMEPAGE_MARKDOWN")).toBeLessThan(
-      prompt.indexOf("HOMEPAGE_HTML")
     )
   })
 
@@ -451,7 +454,7 @@ describe("homepage analysis service", () => {
     expect(fallbackCall.tools).toBeUndefined()
   })
 
-  it("passes oversized homepage evidence through without truncation", async () => {
+  it("avoids duplicating oversized homepage bodies in the raw Firecrawl section", async () => {
     mockGenerateText.mockResolvedValue({
       output: seedBrandProfile,
     })
@@ -466,6 +469,8 @@ describe("homepage analysis service", () => {
         markdown: `# Acme\n\n${"M".repeat(40000)}`,
         rawFirecrawlResponse: {
           ...homepageArtifact.rawFirecrawlResponse,
+          statusCode: 200,
+          screenshotUrl: "https://cdn.example.com/acme-homepage.png",
           html: `<html>${"R".repeat(90000)}</html>`,
           markdown: `# Acme\n\n${"N".repeat(90000)}`,
         },
@@ -478,7 +483,11 @@ describe("homepage analysis service", () => {
 
     expect(prompt).not.toContain("[truncated")
     expect(prompt).toContain(`HOMEPAGE_MARKDOWN:\n# Acme\n\n${"M".repeat(40000)}`)
-    expect(prompt).toContain(`<html>${"R".repeat(90000)}</html>`)
-    expect(prompt.length).toBeGreaterThan(170000)
+    expect(prompt).not.toContain(`<html>${"H".repeat(40000)}</html>`)
+    expect(prompt).toContain('"screenshotUrl": "https://cdn.example.com/acme-homepage.png"')
+    expect(prompt).toContain('"statusCode": 200')
+    expect(prompt).not.toContain(`<html>${"R".repeat(2000)}`)
+    expect(prompt).not.toContain(`# Acme\n\n${"N".repeat(2000)}`)
+    expect(prompt.length).toBeLessThan(60000)
   })
 })

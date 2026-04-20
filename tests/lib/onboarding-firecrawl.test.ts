@@ -89,6 +89,37 @@ describe("scrapeBrandHomepage", () => {
     })
     expect(mockScrape).toHaveBeenCalledTimes(2)
   })
+
+  it("omits duplicated homepage bodies from the raw Firecrawl payload", async () => {
+    mockScrape.mockResolvedValue({
+      html: "<html><body><h1>Acme</h1></body></html>",
+      markdown: "# Acme",
+      metadata: {
+        sourceURL: "https://www.acme.com",
+        title: "Acme",
+      },
+      statusCode: 200,
+      warning: "cached",
+    })
+
+    const { scrapeBrandHomepageArtifact } = await loadFirecrawlModule()
+
+    const artifact = await scrapeBrandHomepageArtifact("acme.com")
+
+    expect(artifact).toMatchObject({
+      rawFirecrawlResponse: {
+        metadata: {
+          sourceURL: "https://www.acme.com",
+          title: "Acme",
+        },
+        statusCode: 200,
+        warning: "cached",
+      },
+    })
+
+    expect(artifact.rawFirecrawlResponse).not.toHaveProperty("html")
+    expect(artifact.rawFirecrawlResponse).not.toHaveProperty("markdown")
+  })
 })
 
 describe("toFirecrawlDocuments", () => {
