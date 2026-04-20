@@ -10,6 +10,7 @@ import type {
   OnboardingBrandProfile,
   OnboardingCatalog,
   OnboardingCompetitor,
+  OnboardingEnhancedBrandProfile,
   OnboardingPromptDraft,
   OnboardingTopicDraft,
   OnboardingTopicInput,
@@ -28,7 +29,7 @@ const DEFAULT_TOPIC_COUNT_RANGE = {
 }
 
 const DEFAULT_PROMPTS_PER_TOPIC = 20
-const DEFAULT_STRUCTURED_OUTPUT_MODEL_ID = "openai/gpt-5.4-mini"
+const DEFAULT_STRUCTURED_OUTPUT_MODEL_ID = "openai/gpt-5.4"
 
 type NormalizedScrapedPage = {
   competitorCandidates: OnboardingCompetitor[]
@@ -62,6 +63,7 @@ type TopicPromptGenerationInput = Pick<
   | "website"
 > & {
   generationConfig?: CatalogGenerationConfig
+  geoPromptStrategy?: OnboardingEnhancedBrandProfile["geoPromptStrategy"]
   scrapedPages?: NormalizedScrapedPage[]
 }
 
@@ -173,6 +175,36 @@ function getGenerationConfig(config?: CatalogGenerationConfig) {
   }
 }
 
+function formatGeoPromptStrategy(
+  geoPromptStrategy: OnboardingEnhancedBrandProfile["geoPromptStrategy"] | undefined
+) {
+  if (!geoPromptStrategy) {
+    return "Geo prompt strategy guidance:\n(none)"
+  }
+
+  const recommendedClusters =
+    geoPromptStrategy.recommendedTopicClusters.length > 0
+      ? geoPromptStrategy.recommendedTopicClusters.map((cluster) =>
+          [
+            `- ${cluster.name}`,
+            `  Description: ${cluster.description}`,
+            `  Intents: ${cluster.promptIntentsToInclude.join(", ") || "(none)"}`,
+            `  Why it matters: ${cluster.whyThisClusterMatters}`,
+          ].join("\n")
+        )
+      : ["(none)"]
+
+  return [
+    "Geo prompt strategy guidance:",
+    "Recommended topic clusters:",
+    ...recommendedClusters,
+    `Include competitor-specific prompts: ${geoPromptStrategy.competitorPromptGuidance.shouldIncludeCompetitorSpecificPrompts ? "yes" : "no"}`,
+    `Recommended competitor prompt share: ${geoPromptStrategy.competitorPromptGuidance.recommendedCompetitorPromptShare || "(none)"}`,
+    `Competitors to prioritize: ${geoPromptStrategy.competitorPromptGuidance.competitorsToPrioritize.join(", ") || "(none)"}`,
+    `Comparison angles: ${geoPromptStrategy.competitorPromptGuidance.comparisonAngles.join(", ") || "(none)"}`,
+  ].join("\n")
+}
+
 export function countCatalogPrompts(catalog: OnboardingCatalog) {
   return catalog.topics.reduce((total, topic) => total + topic.prompts.length, 0)
 }
@@ -246,6 +278,7 @@ function buildCatalogUserPrompt(input: {
   companyName: string
   competitors: OnboardingCompetitor[]
   excludedPromptTexts: string[]
+  geoPromptStrategy?: OnboardingEnhancedBrandProfile["geoPromptStrategy"]
   excludedTopicNames: string[]
   promptsPerTopic: number
   scrapedPages: ReturnType<typeof normalizeScrapedPagesForGeneration>
@@ -275,6 +308,8 @@ function buildCatalogUserPrompt(input: {
     `Excluded prompt texts: ${input.excludedPromptTexts.join(" | ") || "(none)"}`,
     `Prompt count per topic: ${input.promptsPerTopic}`,
     `Description: ${input.brandProfile.detailedDescription}`,
+    "",
+    formatGeoPromptStrategy(input.geoPromptStrategy),
     "",
     "Scraped pages:",
     ...input.scrapedPages.map(
@@ -373,6 +408,7 @@ async function retryCatalogGeneration(input: {
   companyName: string
   competitors: OnboardingCompetitor[]
   excludedPromptTexts: string[]
+  geoPromptStrategy?: OnboardingEnhancedBrandProfile["geoPromptStrategy"]
   excludedTopicNames: string[]
   promptsPerTopic: number
   scrapedPages: ReturnType<typeof normalizeScrapedPagesForGeneration>
@@ -403,6 +439,7 @@ async function retryCatalogGeneration(input: {
           companyName: input.companyName,
           competitors: input.competitors,
           excludedPromptTexts: input.excludedPromptTexts,
+          geoPromptStrategy: input.geoPromptStrategy,
           excludedTopicNames: input.excludedTopicNames,
           promptsPerTopic: input.promptsPerTopic,
           scrapedPages: input.scrapedPages,
@@ -521,6 +558,7 @@ export async function generateTopicPromptDrafts(input: {
   competitors: OnboardingCompetitor[]
   description: string
   generationConfig?: CatalogGenerationConfig
+  geoPromptStrategy?: OnboardingEnhancedBrandProfile["geoPromptStrategy"]
   intentSummary?: string
   scrapedPages?: NormalizedScrapedPage[]
   sourceUrls?: string[]
@@ -535,6 +573,7 @@ export async function generateTopicPromptDrafts(input: {
     competitors: input.competitors,
     description: input.description,
     generationConfig: input.generationConfig,
+    geoPromptStrategy: input.geoPromptStrategy,
     scrapedPages: input.scrapedPages,
     topics: [
       {
@@ -577,6 +616,7 @@ export async function generateTopicPromptCollection(
     companyName: input.companyName,
     competitors: dedupeCompetitors(input.competitors),
     excludedPromptTexts: input.excludedPromptTexts ?? [],
+    geoPromptStrategy: input.geoPromptStrategy,
     excludedTopicNames: input.excludedTopicNames ?? [],
     promptsPerTopic: generationConfig.promptsPerTopic,
     scrapedPages,

@@ -3,11 +3,16 @@ import Firecrawl from "@mendable/firecrawl-js"
 import { normalizeWebsite, parsePublicWebsiteUrl } from "@/lib/brands"
 import { getOnboardingConfig } from "@/lib/onboarding/config"
 import {
+  onboardingHomepageScrapeArtifactSchema,
   onboardingScrapeContextSchema,
+  type OnboardingHomepageScrapeArtifact,
   type OnboardingScrapeContext,
 } from "@/lib/onboarding/types"
 
 const MAX_MARKDOWN_PREVIEW_CHARS = 1500
+const MAX_EMPTY_SCRAPE_RESPONSE_RETRIES = 3
+const FAILED_BRAND_PROFILE_FETCH_MESSAGE =
+  "Failed to fetch brand profile. Continue manually."
 
 export interface FirecrawlMappedLink {
   description?: string | null
@@ -46,6 +51,49 @@ function normalizePageUrl(url: string) {
   parsed.hash = ""
 
   return parsed.toString()
+}
+
+function toJsonRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object") {
+    return {}
+  }
+
+  return JSON.parse(JSON.stringify(value)) as Record<string, unknown>
+}
+
+function hasUsableHomepageContent(document: {
+  html?: string | null
+  markdown?: string | null
+} | null | undefined) {
+  return Boolean(document?.html?.trim() || document?.markdown?.trim())
+}
+
+function toHomepageScrapeArtifact(input: {
+  document: {
+    html?: string | null
+    markdown?: string | null
+    metadata?: Record<string, unknown> | null
+  }
+  normalizedWebsite: string
+}): OnboardingHomepageScrapeArtifact {
+  const homepageUrl =
+    typeof input.document.metadata?.sourceURL === "string"
+      ? input.document.metadata.sourceURL
+      : input.normalizedWebsite
+  const normalizedHomepageUrl =
+    typeof input.document.metadata?.sourceURL === "string"
+      ? normalizePageUrl(input.document.metadata.sourceURL)
+      : input.normalizedWebsite
+
+  return onboardingHomepageScrapeArtifactSchema.parse({
+    domain: new URL(input.normalizedWebsite).hostname.replace(/^www\./i, ""),
+    html: input.document.html ?? "",
+    markdown: input.document.markdown ?? "",
+    homepageUrl,
+    metadata: toJsonRecord(input.document.metadata ?? {}),
+    normalizedHomepageUrl,
+    rawFirecrawlResponse: toJsonRecord(input.document),
+  })
 }
 
 export async function mapWebsiteUrls(
@@ -162,19 +210,11 @@ export function toFirecrawlDocuments(
 export async function scrapeBrandHomepage(
   website: string
 ): Promise<OnboardingScrapeContext> {
-  const normalizedWebsite = normalizeWebsite(website)
-  const document = await getFirecrawlClient().scrape(normalizedWebsite, {
-    formats: ["markdown", "html"],
-    onlyMainContent: true,
-  })
-
+  const artifact = await scrapeBrandHomepageArtifact(website)
   const context = onboardingScrapeContextSchema.parse({
-    html: document.html ?? "",
-    markdown: document.markdown ?? "",
-    url:
-      typeof document.metadata?.sourceURL === "string"
-        ? document.metadata.sourceURL
-        : normalizedWebsite,
+    html: artifact.html,
+    markdown: artifact.markdown,
+    url: artifact.homepageUrl,
   })
 
   console.log("[onboarding] Firecrawl scrape context", {
@@ -185,4 +225,40 @@ export async function scrapeBrandHomepage(
   })
 
   return context
+}
+
+export async function scrapeBrandHomepageArtifact(
+  website: string
+): Promise<OnboardingHomepageScrapeArtifact> {
+  const normalizedWebsite = normalizeWebsite(website)
+
+  for (let attempt = 0; attempt <= MAX_EMPTY_SCRAPE_RESPONSE_RETRIES; attempt += 1) {
+    const document = await getFirecrawlClient().scrape(normalizedWebsite, {
+      formats: ["markdown", "html"],
+      onlyMainContent: true,
+    })
+
+    if (hasUsableHomepageContent(document)) {
+      if (attempt > 0) {
+        console.log("[onboarding] Firecrawl scrape recovered after empty response", {
+          attempt: attempt + 1,
+          website: normalizedWebsite,
+        })
+      }
+
+      return toHomepageScrapeArtifact({
+        document,
+        normalizedWebsite,
+      })
+    }
+
+    console.warn("[onboarding] Firecrawl scrape returned no usable homepage content", {
+      attempt: attempt + 1,
+      maxAttempts: MAX_EMPTY_SCRAPE_RESPONSE_RETRIES + 1,
+      response: toJsonRecord(document),
+      website: normalizedWebsite,
+    })
+  }
+
+  throw new Error(FAILED_BRAND_PROFILE_FETCH_MESSAGE)
 }

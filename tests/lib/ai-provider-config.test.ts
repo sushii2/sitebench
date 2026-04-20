@@ -4,8 +4,18 @@ const mockGatewayModel = vi.fn((modelId: string) => ({
   modelId,
   provider: "gateway",
 }))
+const mockPerplexitySearch = vi.fn((config?: Record<string, unknown>) => ({
+  config,
+  type: "perplexity_search",
+}))
 
-const mockCreateGateway = vi.fn(() => mockGatewayModel)
+const mockCreateGateway = vi.fn(() =>
+  Object.assign(mockGatewayModel, {
+    tools: {
+      perplexitySearch: mockPerplexitySearch,
+    },
+  })
+)
 
 vi.mock("ai", () => ({
   createGateway: mockCreateGateway,
@@ -26,6 +36,7 @@ describe("provider registry", () => {
     vi.resetModules()
     mockCreateGateway.mockClear()
     mockGatewayModel.mockClear()
+    mockPerplexitySearch.mockClear()
   })
 
   it("normalizes provider aliases", async () => {
@@ -85,6 +96,26 @@ describe("provider registry", () => {
       name: "ChatGPT",
     })
 
+    expect(getProviderDisplayInfo("perplexity")).toEqual({
+      id: "perplexity",
+      logo: "https://cdn.simpleicons.org/perplexity",
+      models: [
+        {
+          id: "perplexity/sonar",
+          name: "Sonar",
+        },
+        {
+          id: "perplexity/sonar-pro",
+          name: "Sonar Pro",
+        },
+        {
+          id: "perplexity/sonar-reasoning-pro",
+          name: "Sonar Reasoning Pro",
+        },
+      ],
+      name: "Perplexity",
+    })
+
     expect(getProviderDisplayCatalog({ anthropic: false })).toEqual([
       getProviderDisplayInfo("openai"),
       getProviderDisplayInfo("perplexity"),
@@ -120,6 +151,10 @@ describe("provider registry", () => {
 
     expect(getDefaultModel("openai")?.id).toBe("openai/gpt-5.4-mini")
     expect(getDefaultModel("openai", "webSearch")?.id).toBe("openai/gpt-5.4-mini")
+    expect(getDefaultModel("perplexity")?.id).toBe("perplexity/sonar")
+    expect(getDefaultModel("perplexity", "webSearch")?.id).toBe(
+      "perplexity/sonar"
+    )
     expect(getDefaultModel("anthropic", "webSearch")).toBeNull()
     expect(
       getProviderModels("openai", {
@@ -161,5 +196,15 @@ describe("provider registry", () => {
         overrides: { openai: false },
       })
     ).toThrow('Provider "openai" is disabled')
+  })
+
+  it("builds a Perplexity search tool with the default filters", async () => {
+    const { getPerplexityWebSearchTool } = await loadProviderConfigModule()
+
+    expect(getPerplexityWebSearchTool()).toEqual({
+      config: undefined,
+      type: "perplexity_search",
+    })
+    expect(mockPerplexitySearch).toHaveBeenCalledWith()
   })
 })

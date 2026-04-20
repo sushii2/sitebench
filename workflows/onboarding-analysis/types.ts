@@ -3,9 +3,12 @@ import type {
   OnboardingBrandProfile,
   OnboardingCompetitor,
   OnboardingCriticalPageSelection,
+  OnboardingEnhancedBrandProfile,
   OnboardingHomepageClassification,
+  OnboardingHomepageScrapeArtifact,
   OnboardingPageSignal,
   OnboardingScrapeContext,
+  OnboardingSeedBrandProfile,
   OnboardingTopicDraft,
 } from "@/lib/onboarding/types"
 import type {
@@ -27,6 +30,28 @@ export interface WorkflowState extends OnboardingAnalysisWorkflowInput {
   warnings: string[]
 }
 
+export interface ScrapedHomepageState extends WorkflowState {
+  homepageArtifact: OnboardingHomepageScrapeArtifact
+}
+
+export interface SeededState extends ScrapedHomepageState {
+  seedBrandProfile: OnboardingSeedBrandProfile
+}
+
+export interface ProfiledState extends SeededState {
+  brandProfile: OnboardingBrandProfile
+  enhancedBrandProfile: OnboardingEnhancedBrandProfile | null
+}
+
+export interface CompetitorState extends ProfiledState {
+  competitors: OnboardingCompetitor[]
+}
+
+export interface PromptedState extends CompetitorState {
+  result: OnboardingAnalysisResult
+  topics: OnboardingTopicDraft[]
+}
+
 export interface MappedState extends WorkflowState {
   mappedPages: MappedPageCandidate[]
 }
@@ -44,10 +69,15 @@ export interface PrefilteredState extends ClassifiedState {
   prefilteredPages: ClassifiedMappedPage[]
 }
 
-export type SelectedCriticalPage = OnboardingCriticalPageSelection["pages"][number] & {
+export type SelectedCriticalPage = {
   candidateScore: number
   description?: string | null
+  expectedSignals: string[]
+  pageRole: OnboardingCriticalPageSelection["pages"][number]["pageRole"]
+  priority: number
   title?: string | null
+  url: string
+  whySelected: string
 }
 
 export interface SelectedState extends PrefilteredState {
@@ -60,7 +90,7 @@ export interface ScrapedSelectedPage {
   html: string
   markdown: string
   metaDescription?: string | null
-  pageRole: SelectedCriticalPage["pageRole"]
+  pageRole: OnboardingCriticalPageSelection["pages"][number]["pageRole"]
   priority: number
   title?: string | null
   url: string
@@ -73,17 +103,4 @@ export interface ScrapedState extends SelectedState {
 
 export interface SignalState extends ScrapedState {
   pageSignals: OnboardingPageSignal[]
-}
-
-export interface ProfiledState extends SignalState {
-  brandProfile: OnboardingBrandProfile
-}
-
-export interface CompetitorState extends ProfiledState {
-  competitors: OnboardingCompetitor[]
-}
-
-export interface PromptedState extends CompetitorState {
-  result: OnboardingAnalysisResult
-  topics: OnboardingTopicDraft[]
 }

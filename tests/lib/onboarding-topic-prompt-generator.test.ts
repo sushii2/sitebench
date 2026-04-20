@@ -144,6 +144,45 @@ describe("generateTopicPromptCollection", () => {
       ],
       description:
         "Acme helps enterprise security teams automate investigations and compliance workflows.",
+      geoPromptStrategy: {
+        competitorPromptGuidance: {
+          comparisonAngles: ["implementation speed", "integration depth"],
+          competitorsToPrioritize: ["Tines", "Torq"],
+          recommendedCompetitorPromptShare:
+            "20-30% of prompts within the comparison cluster",
+          shouldIncludeCompetitorSpecificPrompts: true,
+        },
+        recommendedTopicClusters: [
+          {
+            description:
+              "High-intent evaluation prompts for security automation platforms.",
+            name: "security automation evaluation",
+            promptIntentsToInclude: [
+              "informational",
+              "comparison",
+              "recommendation",
+              "constraint_based",
+              "transactional",
+            ],
+            whyThisClusterMatters:
+              "Captures buyers moving from category education into vendor selection.",
+          },
+          {
+            description:
+              "Direct competitor prompts for buyers comparing Acme with named alternatives.",
+            name: "competitor-specific comparisons",
+            promptIntentsToInclude: [
+              "comparison",
+              "recommendation",
+              "constraint_based",
+              "reputational",
+              "follow_up",
+            ],
+            whyThisClusterMatters:
+              "Measures whether the brand appears when buyers ask for named alternatives.",
+          },
+        ],
+      },
       generationConfig: {
         promptsPerTopic: 3,
         topicCountRange: {
@@ -181,7 +220,7 @@ describe("generateTopicPromptCollection", () => {
 
     expect(mockGetLanguageModel).toHaveBeenCalledWith("openai", {
       capability: "structuredOutput",
-      modelId: "openai/gpt-5.4-mini",
+      modelId: "openai/gpt-5.4",
     })
     const generationCall = mockGenerateText.mock.calls[0]?.[0]
     expect(generationCall.output).toMatchObject({
@@ -192,6 +231,11 @@ describe("generateTopicPromptCollection", () => {
     expect(generationCall.prompt).toContain("Locked topic names: security automation reputation")
     expect(generationCall.prompt).toContain("URL: https://acme.com/platform")
     expect(generationCall.prompt).toContain("Competitor candidates: Tines, Torq")
+    expect(generationCall.prompt).toContain("Geo prompt strategy guidance:")
+    expect(generationCall.prompt).toContain("competitor-specific comparisons")
+    expect(generationCall.prompt).toContain(
+      "Recommended competitor prompt share: 20-30% of prompts within the comparison cluster"
+    )
 
     expect(result.catalog).toMatchObject({
       brand: "Acme",

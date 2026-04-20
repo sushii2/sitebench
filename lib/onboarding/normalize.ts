@@ -4,7 +4,10 @@ import {
   buildGatewayStructuredOutputSystemPrompt,
   createGatewayStructuredObjectOutput,
 } from "@/lib/ai/gateway-structured-output"
-import { getGatewayTools, getLanguageModel } from "@/lib/ai/provider-config"
+import {
+  getLanguageModel,
+  getOpenAiWebSearchTool,
+} from "@/lib/ai/provider-config"
 import { normalizeBrandTopics, normalizeDescription, normalizeWebsite } from "@/lib/brands"
 import {
   onboardingAiSuggestionSchema,
@@ -21,6 +24,7 @@ const MIN_COMPETITORS_WARNING_THRESHOLD = 4
 const MAX_COMPETITORS = 5
 const MAX_DESCRIPTION_LENGTH = 500
 const FALLBACK_DESCRIPTION_SEGMENT_LENGTH = 320
+const WEB_RESEARCH_MAX_STEPS = 5
 const TIER_TWO_FAILURE_WARNING =
   "We could not improve competitors with web search. Review and add competitors if needed."
 
@@ -195,13 +199,19 @@ async function recoverCompetitorsWithWebSearch(input: {
     system: COMPETITOR_RECOVERY_SYSTEM_PROMPT,
     prompt: createTierTwoPrompt(input),
     tools: {
-      perplexity_search: getGatewayTools().perplexitySearch({
-        country: "US",
-        maxResults: 5,
-        searchLanguageFilter: ["en"],
-      }),
+      web_search: getOpenAiWebSearchTool(),
     },
-    stopWhen: stepCountIs(3),
+    stopWhen: stepCountIs(WEB_RESEARCH_MAX_STEPS),
+    onStepFinish({ finishReason, stepNumber, text, toolCalls, toolResults, usage }) {
+      console.log("[onboarding] Tier 2 competitor recovery step finished", {
+        finishReason,
+        stepNumber,
+        textLength: text.length,
+        toolCallCount: toolCalls.length,
+        toolResultCount: toolResults.length,
+        usage,
+      })
+    },
   })
 
   return output

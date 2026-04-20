@@ -1,6 +1,7 @@
 import "server-only"
 
 import { createGateway } from "ai"
+import { openai } from "@ai-sdk/openai"
 
 import { getAiGatewayConfig } from "@/lib/ai/config"
 
@@ -44,6 +45,9 @@ export interface GetLanguageModelOptions {
 type GatewayProviderInstance = ReturnType<typeof createGateway>
 type GatewayLanguageModel = ReturnType<GatewayProviderInstance>
 type GatewayEmbeddingModel = ReturnType<GatewayProviderInstance["embeddingModel"]>
+type PerplexitySearchConfig = Parameters<
+  GatewayProviderInstance["tools"]["perplexitySearch"]
+>[0]
 
 type ProviderRegistryEntry = ProviderConfig & {
   capabilityDefaultModelIds: Partial<Record<ProviderCapability, string>>
@@ -146,6 +150,22 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderRegistryEntry> = {
         }),
         id: "perplexity/sonar",
         name: "Sonar",
+      },
+      {
+        capabilities: createCapabilityMap({
+          streamingResponse: true,
+          webSearch: true,
+        }),
+        id: "perplexity/sonar-pro",
+        name: "Sonar Pro",
+      },
+      {
+        capabilities: createCapabilityMap({
+          streamingResponse: true,
+          webSearch: true,
+        }),
+        id: "perplexity/sonar-reasoning-pro",
+        name: "Sonar Reasoning Pro",
       },
     ],
     name: "Perplexity",
@@ -348,4 +368,25 @@ export function getEmbeddingModel(modelId = "openai/text-embedding-3-small") {
 
 export function getGatewayTools() {
   return getGatewayProvider().tools
+}
+
+export function getOpenAiWebSearchTool() {
+  // OpenAI's provider-executed web search tool completes successfully through
+  // AI Gateway for both text and structured output requests.
+  return openai.tools.webSearch({
+    userLocation: {
+      type: "approximate",
+      country: "US",
+    },
+  })
+}
+
+export function getPerplexityWebSearchTool(
+  options?: PerplexitySearchConfig
+) {
+  if (!options) {
+    return getGatewayTools().perplexitySearch()
+  }
+
+  return getGatewayTools().perplexitySearch(options)
 }

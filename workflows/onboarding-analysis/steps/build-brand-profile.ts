@@ -182,5 +182,5 @@ export async function buildBrandProfileStep(
     },
     timings: extendTimings(input.timings, "buildBrandProfileMs", startedAt),
     warnings,
-  }
+  } as unknown as ProfiledState
 }

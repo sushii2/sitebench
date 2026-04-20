@@ -73,11 +73,9 @@ export const onboardingSiteArchetypeValues = [
 ] as const
 
 export const onboardingWorkflowPhaseValues = [
-  "mapping",
-  "classifying",
-  "planning",
   "scraping",
-  "profiling",
+  "seeding",
+  "enhancing",
   "competitors",
   "prompting",
   "completed",
@@ -148,6 +146,269 @@ export const onboardingScrapeContextSchema = z.object({
   url: z.string().url(),
   markdown: z.string(),
 })
+
+export const onboardingHomepageScrapeArtifactSchema = z.object({
+  domain: z.string().trim().min(1),
+  homepageUrl: z.string().url(),
+  html: z.string(),
+  markdown: z.string(),
+  metadata: z.record(z.string(), z.unknown()),
+  normalizedHomepageUrl: z.string().url(),
+  rawFirecrawlResponse: z.record(z.string(), z.unknown()),
+})
+
+export const onboardingProofSignalTypeValues = [
+  "customer_logos",
+  "testimonial",
+  "review",
+  "rating",
+  "case_study",
+  "statistic",
+  "press",
+  "award",
+  "certification",
+  "social_proof",
+  "unknown",
+] as const
+
+export const onboardingPricingSignalTypeValues = [
+  "free_trial",
+  "free_plan",
+  "demo_request",
+  "contact_sales",
+  "quote_request",
+  "starting_price",
+  "custom_pricing",
+  "discount",
+  "membership",
+  "bundle",
+  "unknown",
+] as const
+
+export const onboardingTrustSignalTypeValues = [
+  "security",
+  "compliance",
+  "privacy",
+  "quality",
+  "guarantee",
+  "warranty",
+  "shipping",
+  "returns",
+  "safety",
+  "certification",
+  "expertise",
+  "vetting",
+  "unknown",
+] as const
+
+export const onboardingConversionActionTypeValues = [
+  "book_demo",
+  "start_trial",
+  "contact_sales",
+  "get_quote",
+  "shop_now",
+  "subscribe",
+  "schedule_consultation",
+  "download_guide",
+  "join_waitlist",
+  "browse_products",
+  "learn_more",
+  "sign_up",
+  "unknown",
+] as const
+
+export const onboardingEnhancementSourceTypeValues = [
+  "first_party_seed",
+  "web_search",
+  "inference",
+] as const
+
+const onboardingSeedNamedEvidenceSchema = z.object({
+  description: z.string().trim(),
+  evidence: z.string().trim(),
+  name: z.string().trim(),
+})
+
+const onboardingSeedAudienceSchema = z.object({
+  audience: z.string().trim(),
+  description: z.string().trim(),
+  evidence: z.string().trim(),
+})
+
+const onboardingSeedUseCaseSchema = z.object({
+  description: z.string().trim(),
+  evidence: z.string().trim(),
+  useCase: z.string().trim(),
+})
+
+const onboardingSeedProofSignalSchema = z.object({
+  description: z.string().trim(),
+  evidence: z.string().trim(),
+  type: z.enum(onboardingProofSignalTypeValues),
+})
+
+const onboardingSeedPricingSignalSchema = z.object({
+  evidence: z.string().trim(),
+  signal: z.string().trim(),
+  type: z.enum(onboardingPricingSignalTypeValues),
+})
+
+const onboardingSeedTrustSignalSchema = z.object({
+  evidence: z.string().trim(),
+  signal: z.string().trim(),
+  type: z.enum(onboardingTrustSignalTypeValues),
+})
+
+const onboardingSeedConversionActionSchema = z.object({
+  action: z.string().trim(),
+  evidence: z.string().trim(),
+  type: z.enum(onboardingConversionActionTypeValues),
+})
+
+const onboardingSeedSiteVocabularySchema = z.object({
+  audienceTerms: z.array(z.string().trim()),
+  brandTerms: z.array(z.string().trim()),
+  categoryTerms: z.array(z.string().trim()),
+  comparisonTerms: z.array(z.string().trim()),
+  conversionTerms: z.array(z.string().trim()),
+  pricingTerms: z.array(z.string().trim()),
+  productTerms: z.array(z.string().trim()),
+  proofTerms: z.array(z.string().trim()),
+  trustTerms: z.array(z.string().trim()),
+  useCaseTerms: z.array(z.string().trim()),
+})
+
+const onboardingSeedConfidenceSchema = z.object({
+  audiences: z.number().min(0).max(1),
+  businessType: z.number().min(0).max(1),
+  overall: z.number().min(0).max(1),
+  pricing: z.number().min(0).max(1),
+  primaryCategory: z.number().min(0).max(1),
+  productsOrServices: z.number().min(0).max(1),
+})
+
+export const onboardingSeedBrandProfileSchema = z.object({
+  brandName: z.string().trim(),
+  confidence: onboardingSeedConfidenceSchema,
+  businessType: z.string().trim(),
+  conversionActions: z.array(onboardingSeedConversionActionSchema),
+  differentiators: z.array(
+    z.object({
+      claim: z.string().trim(),
+      evidence: z.string().trim(),
+    })
+  ),
+  domain: z.string().trim().min(1),
+  homepageUrl: z.string().url(),
+  missingContext: z.array(z.string().trim()),
+  oneSentenceDescription: z.string().trim(),
+  painPoints: z.array(
+    z.object({
+      evidence: z.string().trim(),
+      painPoint: z.string().trim(),
+    })
+  ),
+  pricingSignals: z.array(onboardingSeedPricingSignalSchema),
+  primaryCategory: z.string().trim(),
+  productsOrServices: z.array(onboardingSeedNamedEvidenceSchema),
+  proofSignals: z.array(onboardingSeedProofSignalSchema),
+  secondaryCategories: z.array(z.string().trim()),
+  siteVocabulary: onboardingSeedSiteVocabularySchema,
+  targetAudiences: z.array(onboardingSeedAudienceSchema),
+  trustSignals: z.array(onboardingSeedTrustSignalSchema),
+  useCases: z.array(onboardingSeedUseCaseSchema),
+  valuePropositions: z.array(
+    z.object({
+      claim: z.string().trim(),
+      evidence: z.string().trim(),
+    })
+  ),
+})
+
+export const onboardingGatewaySeedBrandProfileSchema =
+  createGatewayValidatedSchema(
+    removeUnsupportedGatewaySchemaKeywords(
+      z.toJSONSchema(onboardingSeedBrandProfileSchema) as Record<string, unknown>
+    ) as Record<string, unknown>,
+    onboardingSeedBrandProfileSchema
+  )
+
+export const onboardingEnhancedBrandProfileSchema = z.object({
+  brand: z.object({
+    businessType: z.string().trim(),
+    categoryConfidence: z.number().min(0).max(1),
+    domain: z.string().trim().min(1),
+    homepageUrl: z.string().url(),
+    name: z.string().trim(),
+    primaryCategory: z.string().trim(),
+  }),
+  buyingJourney: z.object({
+    brandAwareQueries: z.array(z.string().trim()),
+    comparisonQueries: z.array(z.string().trim()),
+    followUpQueries: z.array(z.string().trim()),
+    problemAwareQueries: z.array(z.string().trim()),
+    solutionAwareQueries: z.array(z.string().trim()),
+    transactionalQueries: z.array(z.string().trim()),
+  }),
+  externalCategoryContext: z.object({
+    adjacentCategories: z.array(z.string().trim()),
+    categoryLanguage: z.array(z.string().trim()),
+    categoryNames: z.array(z.string().trim()),
+    commonBuyerQuestions: z.array(z.string().trim()),
+    commonComparisonPatterns: z.array(z.string().trim()),
+    substituteSolutions: z.array(z.string().trim()),
+  }),
+  firstPartySummary: z.object({
+    conversionActions: z.array(z.string().trim()),
+    differentiators: z.array(z.string().trim()),
+    oneSentenceDescription: z.string().trim(),
+    productsOrServices: z.array(z.string().trim()),
+    targetAudiences: z.array(z.string().trim()),
+    useCases: z.array(z.string().trim()),
+    valuePropositions: z.array(z.string().trim()),
+  }),
+  geoPromptStrategy: z.object({
+    competitorPromptGuidance: z.object({
+      comparisonAngles: z.array(z.string().trim()),
+      competitorsToPrioritize: z.array(z.string().trim()),
+      recommendedCompetitorPromptShare: z.string().trim(),
+      shouldIncludeCompetitorSpecificPrompts: z.boolean(),
+    }),
+    recommendedTopicClusters: z.array(
+      z.object({
+        description: z.string().trim(),
+        name: z.string().trim(),
+        promptIntentsToInclude: z.array(z.enum(onboardingPromptIntentValues)),
+        whyThisClusterMatters: z.string().trim(),
+      })
+    ),
+  }),
+  reputationContext: z.object({
+    likelyReputationQuestions: z.array(z.string().trim()),
+    qualityQuestions: z.array(z.string().trim()),
+    riskQuestions: z.array(z.string().trim()),
+    trustQuestions: z.array(z.string().trim()),
+    valueQuestions: z.array(z.string().trim()),
+  }),
+  sourceNotes: z.array(
+    z.object({
+      claim: z.string().trim(),
+      confidence: z.number().min(0).max(1),
+      sourceType: z.enum(onboardingEnhancementSourceTypeValues),
+    })
+  ),
+  uncertainties: z.array(z.string().trim()),
+})
+
+export const onboardingGatewayEnhancedBrandProfileSchema =
+  createGatewayValidatedSchema(
+    removeUnsupportedGatewaySchemaKeywords(
+      z.toJSONSchema(
+        onboardingEnhancedBrandProfileSchema
+      ) as Record<string, unknown>
+    ) as Record<string, unknown>,
+    onboardingEnhancedBrandProfileSchema
+  )
 
 export const onboardingTopicSourceSchema = z.enum([
   "user_added",
@@ -312,6 +573,27 @@ function createGatewayValidatedSchema<OBJECT>(
       }
     },
   })
+}
+
+function removeUnsupportedGatewaySchemaKeywords(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(removeUnsupportedGatewaySchemaKeywords)
+  }
+
+  if (!value || typeof value !== "object") {
+    return value
+  }
+
+  const record = value as Record<string, unknown>
+  const normalizedEntries = Object.entries(record).flatMap(([key, child]) => {
+    if (key === "format") {
+      return []
+    }
+
+    return [[key, removeUnsupportedGatewaySchemaKeywords(child)]]
+  })
+
+  return Object.fromEntries(normalizedEntries)
 }
 
 const onboardingGatewayHomepageClassificationValidationSchema = z.object({
@@ -1045,6 +1327,10 @@ export type OnboardingScrapeContext = z.infer<
   typeof onboardingScrapeContextSchema
 >
 
+export type OnboardingHomepageScrapeArtifact = z.infer<
+  typeof onboardingHomepageScrapeArtifactSchema
+>
+
 export type OnboardingCompetitorRecovery = z.infer<
   typeof onboardingCompetitorRecoverySchema
 >
@@ -1086,6 +1372,14 @@ export type OnboardingPageSignalBatch = z.infer<
 
 export type OnboardingBrandProfile = z.infer<
   typeof onboardingBrandProfileSchema
+>
+
+export type OnboardingSeedBrandProfile = z.infer<
+  typeof onboardingSeedBrandProfileSchema
+>
+
+export type OnboardingEnhancedBrandProfile = z.infer<
+  typeof onboardingEnhancedBrandProfileSchema
 >
 
 export type OnboardingPromptGenerationCandidate = z.infer<
