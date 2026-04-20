@@ -4,7 +4,10 @@ import {
   buildGatewayStructuredOutputSystemPrompt,
   createGatewayStructuredObjectOutput,
 } from "@/lib/ai/gateway-structured-output"
-import { getLanguageModel } from "@/lib/ai/provider-config"
+import {
+  getOnboardingStructuredOutputModel,
+  ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
+} from "@/lib/onboarding/ai-config"
 import {
   onboardingPageSignalBatchSchema,
   onboardingGatewayPageSignalBatchSchema,
@@ -62,10 +65,7 @@ export async function extractPageSignalsStep(
   try {
     if (input.scrapedPages.length > 0) {
       const { output } = await generateText({
-        model: getLanguageModel("openai", {
-          capability: "structuredOutput",
-          modelId: "openai/gpt-5.4-mini",
-        }),
+        model: getOnboardingStructuredOutputModel(),
         output: createGatewayStructuredObjectOutput({
           description:
             "Structured page-level entities, intents, competitor candidates, and evidence snippets extracted from scraped onboarding pages.",
@@ -91,6 +91,7 @@ export async function extractPageSignalsStep(
           "Only return competitor candidates when the page evidence supports them.",
           "Return only the schema fields.",
         ]),
+        providerOptions: ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
         temperature: 0,
       })
 

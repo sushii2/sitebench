@@ -4,6 +4,10 @@ const mockGatewayModel = vi.fn((modelId: string) => ({
   modelId,
   provider: "gateway",
 }))
+const mockParallelSearch = vi.fn((config?: Record<string, unknown>) => ({
+  config,
+  type: "parallel_search",
+}))
 const mockPerplexitySearch = vi.fn((config?: Record<string, unknown>) => ({
   config,
   type: "perplexity_search",
@@ -12,6 +16,7 @@ const mockPerplexitySearch = vi.fn((config?: Record<string, unknown>) => ({
 const mockCreateGateway = vi.fn(() =>
   Object.assign(mockGatewayModel, {
     tools: {
+      parallelSearch: mockParallelSearch,
       perplexitySearch: mockPerplexitySearch,
     },
   })
@@ -36,6 +41,7 @@ describe("provider registry", () => {
     vi.resetModules()
     mockCreateGateway.mockClear()
     mockGatewayModel.mockClear()
+    mockParallelSearch.mockClear()
     mockPerplexitySearch.mockClear()
   })
 
@@ -84,6 +90,10 @@ describe("provider registry", () => {
       id: "openai",
       logo: "https://cdn.simpleicons.org/openai",
       models: [
+        {
+          id: "openai/gpt-5.4",
+          name: "GPT-5.4",
+        },
         {
           id: "openai/gpt-5.4-mini",
           name: "GPT-5.4 Mini",
@@ -134,6 +144,16 @@ describe("provider registry", () => {
           structuredOutput: true,
           webSearch: true,
         },
+        id: "openai/gpt-5.4",
+        name: "GPT-5.4",
+      },
+      {
+        capabilities: {
+          reasoning: false,
+          streamingResponse: true,
+          structuredOutput: true,
+          webSearch: true,
+        },
         id: "openai/gpt-5.4-mini",
         name: "GPT-5.4 Mini",
       },
@@ -149,8 +169,8 @@ describe("provider registry", () => {
       },
     ])
 
-    expect(getDefaultModel("openai")?.id).toBe("openai/gpt-5.4-mini")
-    expect(getDefaultModel("openai", "webSearch")?.id).toBe("openai/gpt-5.4-mini")
+    expect(getDefaultModel("openai")?.id).toBe("openai/gpt-5.4")
+    expect(getDefaultModel("openai", "webSearch")?.id).toBe("openai/gpt-5.4")
     expect(getDefaultModel("perplexity")?.id).toBe("perplexity/sonar")
     expect(getDefaultModel("perplexity", "webSearch")?.id).toBe(
       "perplexity/sonar"
@@ -173,7 +193,7 @@ describe("provider registry", () => {
         capability: "structuredOutput",
       })
     ).toEqual({
-      modelId: "openai/gpt-5.4-mini",
+      modelId: "openai/gpt-5.4",
       provider: "gateway",
     })
     expect(
@@ -181,14 +201,14 @@ describe("provider registry", () => {
         capability: "webSearch",
       })
     ).toEqual({
-      modelId: "openai/gpt-5.4-mini",
+      modelId: "openai/gpt-5.4",
       provider: "gateway",
     })
 
     expect(mockCreateGateway).toHaveBeenCalledWith({
       apiKey: "gateway-key",
     })
-    expect(mockGatewayModel).toHaveBeenCalledWith("openai/gpt-5.4-mini")
+    expect(mockGatewayModel).toHaveBeenCalledWith("openai/gpt-5.4")
 
     expect(() =>
       getLanguageModel("openai", {
@@ -196,6 +216,36 @@ describe("provider registry", () => {
         overrides: { openai: false },
       })
     ).toThrow('Provider "openai" is disabled')
+  })
+
+  it("builds a Parallel search tool with the configured defaults", async () => {
+    const { getParallelWebSearchTool } = await loadProviderConfigModule()
+
+    expect(
+      getParallelWebSearchTool({
+        excerpts: {
+          maxCharsPerResult: 1200,
+        },
+        maxResults: 6,
+        mode: "agentic",
+      })
+    ).toEqual({
+      config: {
+        excerpts: {
+          maxCharsPerResult: 1200,
+        },
+        maxResults: 6,
+        mode: "agentic",
+      },
+      type: "parallel_search",
+    })
+    expect(mockParallelSearch).toHaveBeenCalledWith({
+      excerpts: {
+        maxCharsPerResult: 1200,
+      },
+      maxResults: 6,
+      mode: "agentic",
+    })
   })
 
   it("builds a Perplexity search tool with the default filters", async () => {

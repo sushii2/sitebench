@@ -136,7 +136,7 @@ describe("extractPageSignalsStep", () => {
 
     expect(mockGetLanguageModel).toHaveBeenCalledWith("openai", {
       capability: "structuredOutput",
-      modelId: "openai/gpt-5.4-mini",
+      modelId: "openai/gpt-5.4",
     })
     expect(mockReplaceSiteCrawlPages).toHaveBeenCalledWith(
       expect.objectContaining({

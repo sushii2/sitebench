@@ -4,7 +4,10 @@ import {
   buildGatewayStructuredOutputSystemPrompt,
   createGatewayStructuredObjectOutput,
 } from "@/lib/ai/gateway-structured-output"
-import { getLanguageModel } from "@/lib/ai/provider-config"
+import {
+  getOnboardingStructuredOutputModel,
+  ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
+} from "@/lib/onboarding/ai-config"
 import {
   onboardingGatewayHomepageClassificationSchema,
   onboardingHomepageClassificationSchema,
@@ -77,9 +80,7 @@ export async function classifyHomepageStep(
   try {
     if (input.homepage) {
       const { output } = await generateText({
-        model: getLanguageModel("openai", {
-          capability: "structuredOutput",
-        }),
+        model: getOnboardingStructuredOutputModel(),
         output: createGatewayStructuredObjectOutput({
           description:
             "Structured homepage classification for onboarding analysis with archetype, categories, buyer language, personas, pricing, and page patterns.",
@@ -105,6 +106,7 @@ export async function classifyHomepageStep(
           "Use an empty string for primarySubcategory when the homepage does not support a tighter label.",
           "Return only the schema fields.",
         ]),
+        providerOptions: ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
         temperature: 0,
       })
 

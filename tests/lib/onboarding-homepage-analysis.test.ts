@@ -10,8 +10,8 @@ const mockStepCountIs = vi.fn((count: number) => ({
   count,
   type: "stepCountIs",
 }))
-const mockOpenAiWebSearchTool = vi.fn(() => ({
-  type: "web_search",
+const mockParallelWebSearchTool = vi.fn(() => ({
+  type: "parallel_search",
 }))
 const mockGetLanguageModel = vi.fn(
   (_providerId: string, options?: { capability?: string; modelId?: string }) => ({
@@ -37,7 +37,7 @@ vi.mock("ai", async (importOriginal) => {
 
 vi.mock("@/lib/ai/provider-config", () => ({
   getLanguageModel: mockGetLanguageModel,
-  getOpenAiWebSearchTool: mockOpenAiWebSearchTool,
+  getParallelWebSearchTool: mockParallelWebSearchTool,
 }))
 
 async function loadHomepageAnalysisModule() {
@@ -253,7 +253,7 @@ describe("homepage analysis service", () => {
     vi.resetModules()
     mockGenerateText.mockReset()
     mockGetLanguageModel.mockClear()
-    mockOpenAiWebSearchTool.mockClear()
+    mockParallelWebSearchTool.mockClear()
     mockStepCountIs.mockClear()
   })
 
@@ -273,7 +273,7 @@ describe("homepage analysis service", () => {
     expect(result).toEqual(seedBrandProfile)
     expect(mockGetLanguageModel).toHaveBeenCalledWith("openai", {
       capability: "structuredOutput",
-      modelId: "openai/gpt-5.4-mini",
+      modelId: "openai/gpt-5.4",
     })
 
     const generationCall = mockGenerateText.mock.calls[0]?.[0]
@@ -316,7 +316,7 @@ describe("homepage analysis service", () => {
     )
   })
 
-  it("enhances the seed profile with GPT-5.4 Mini and OpenAI web search", async () => {
+  it("enhances the seed profile with GPT-5.4 and Parallel search", async () => {
     mockGenerateText.mockResolvedValue({
       output: enhancedBrandProfile,
     })
@@ -332,8 +332,8 @@ describe("homepage analysis service", () => {
 
     expect(result).toEqual(enhancedBrandProfile)
     expect(mockGetLanguageModel).toHaveBeenCalledWith("openai", {
-      capability: "webSearch",
-      modelId: "openai/gpt-5.4-mini",
+      capability: "structuredOutput",
+      modelId: "openai/gpt-5.4",
     })
 
     const generationCall = mockGenerateText.mock.calls[0]?.[0]
@@ -349,16 +349,31 @@ describe("homepage analysis service", () => {
     expect(generationCall.system).toContain("Do not claim that an external fact is certain unless web evidence supports it")
     expect(generationCall.system).toContain("If competitors are ambiguous, include confidence scores and explain overlap")
     expect(generationCall.system).toContain("do not generate a page discovery plan")
-    expect(mockOpenAiWebSearchTool).toHaveBeenCalledTimes(1)
+    expect(generationCall.system).toContain("Call parallel_search at most once")
+    expect(mockParallelWebSearchTool).toHaveBeenCalledTimes(1)
     expect(generationCall.tools).toEqual({
-      web_search: {
-        type: "web_search",
+      parallel_search: {
+        type: "parallel_search",
       },
     })
-    expect(mockStepCountIs).toHaveBeenCalledWith(8)
+    expect(mockStepCountIs).toHaveBeenCalledWith(3)
     expect(generationCall.stopWhen).toEqual({
-      count: 8,
+      count: 3,
       type: "stepCountIs",
+    })
+    expect(generationCall.prepareStep).toBeTypeOf("function")
+    expect(
+      generationCall.prepareStep({
+        stepNumber: 1,
+        steps: [
+          {
+            toolCalls: [{ toolName: "parallel_search" }],
+            toolResults: [{ toolName: "parallel_search" }],
+          },
+        ],
+      })
+    ).toEqual({
+      activeTools: [],
     })
 
     const prompt = generationCall.prompt as string
@@ -395,9 +410,9 @@ describe("homepage analysis service", () => {
     )
   })
 
-  it("falls back to GPT-5.4 Mini without tools when search-assisted enhancement fails", async () => {
+  it("falls back to GPT-5.4 without tools when search-assisted enhancement fails", async () => {
     mockGenerateText
-      .mockRejectedValueOnce(new Error("OpenAI web search failed"))
+      .mockRejectedValueOnce(new Error("Parallel search failed"))
       .mockResolvedValueOnce({
         output: enhancedBrandProfile,
       })
@@ -413,19 +428,19 @@ describe("homepage analysis service", () => {
 
     expect(result).toEqual(enhancedBrandProfile)
     expect(mockGetLanguageModel).toHaveBeenNthCalledWith(1, "openai", {
-      capability: "webSearch",
-      modelId: "openai/gpt-5.4-mini",
+      capability: "structuredOutput",
+      modelId: "openai/gpt-5.4",
     })
     expect(mockGetLanguageModel).toHaveBeenNthCalledWith(2, "openai", {
       capability: "structuredOutput",
-      modelId: "openai/gpt-5.4-mini",
+      modelId: "openai/gpt-5.4",
     })
-    expect(mockOpenAiWebSearchTool).toHaveBeenCalledTimes(1)
+    expect(mockParallelWebSearchTool).toHaveBeenCalledTimes(1)
 
     const firstCall = mockGenerateText.mock.calls[0]?.[0]
     expect(firstCall.tools).toEqual({
-      web_search: {
-        type: "web_search",
+      parallel_search: {
+        type: "parallel_search",
       },
     })
 
@@ -434,5 +449,36 @@ describe("homepage analysis service", () => {
       name: "onboarding_enhanced_brand_profile",
     })
     expect(fallbackCall.tools).toBeUndefined()
+  })
+
+  it("passes oversized homepage evidence through without truncation", async () => {
+    mockGenerateText.mockResolvedValue({
+      output: seedBrandProfile,
+    })
+
+    const { buildSeedBrandProfile } = await loadHomepageAnalysisModule()
+
+    await buildSeedBrandProfile({
+      companyName: "Acme",
+      homepageArtifact: {
+        ...homepageArtifact,
+        html: `<html>${"H".repeat(40000)}</html>`,
+        markdown: `# Acme\n\n${"M".repeat(40000)}`,
+        rawFirecrawlResponse: {
+          ...homepageArtifact.rawFirecrawlResponse,
+          html: `<html>${"R".repeat(90000)}</html>`,
+          markdown: `# Acme\n\n${"N".repeat(90000)}`,
+        },
+      },
+      website: "https://acme.com",
+    })
+
+    const generationCall = mockGenerateText.mock.calls[0]?.[0]
+    const prompt = generationCall.prompt as string
+
+    expect(prompt).not.toContain("[truncated")
+    expect(prompt).toContain(`HOMEPAGE_MARKDOWN:\n# Acme\n\n${"M".repeat(40000)}`)
+    expect(prompt).toContain(`<html>${"R".repeat(90000)}</html>`)
+    expect(prompt.length).toBeGreaterThan(170000)
   })
 })

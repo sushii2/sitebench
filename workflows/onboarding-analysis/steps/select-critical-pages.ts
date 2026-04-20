@@ -4,7 +4,10 @@ import {
   buildGatewayStructuredOutputSystemPrompt,
   createGatewayStructuredObjectOutput,
 } from "@/lib/ai/gateway-structured-output"
-import { getLanguageModel } from "@/lib/ai/provider-config"
+import {
+  getOnboardingStructuredOutputModel,
+  ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
+} from "@/lib/onboarding/ai-config"
 import {
   onboardingCriticalPageSelectionSchema,
   onboardingGatewayCriticalPageSelectionSchema,
@@ -47,9 +50,7 @@ export async function selectCriticalPagesStep(
 
   try {
     const { output } = await generateText({
-      model: getLanguageModel("openai", {
-        capability: "structuredOutput",
-      }),
+      model: getOnboardingStructuredOutputModel(),
       output: createGatewayStructuredObjectOutput({
         description:
           "Structured critical-page selection for onboarding analysis with page roles, priorities, reasons, and expected signals.",
@@ -79,6 +80,7 @@ export async function selectCriticalPagesStep(
         "expectedSignals must describe the evidence you expect to extract from each chosen page, such as taxonomy breadth, pricing mechanics, product packaging, buyer segmentation, proof, or competitor framing.",
         "Return only the schema fields.",
       ]),
+      providerOptions: ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
       temperature: 0,
     })
 

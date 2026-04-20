@@ -1,10 +1,13 @@
-import { generateText, NoOutputGeneratedError, Output, stepCountIs } from "ai"
+import { generateText, NoOutputGeneratedError, Output } from "ai"
 
 import { buildGatewayStructuredOutputSystemPrompt } from "@/lib/ai/gateway-structured-output"
 import {
-  getLanguageModel,
-  getOpenAiWebSearchTool,
-} from "@/lib/ai/provider-config"
+  getOnboardingSearchTools,
+  getOnboardingSearchModel,
+  getOnboardingStructuredOutputModel,
+  ONBOARDING_SEARCH_PROVIDER_OPTIONS,
+  ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
+} from "@/lib/onboarding/ai-config"
 import { generateCompetitorCandidates } from "@/lib/onboarding/competitor-candidates"
 import { scrapeBrandHomepageArtifact } from "@/lib/onboarding/firecrawl"
 import {
@@ -34,10 +37,8 @@ import {
   type OnboardingHomepageScrapeArtifact,
   type OnboardingSeedBrandProfile,
 } from "@/lib/onboarding/types"
+import { createSingleSearchStructuredOutputLoopControl } from "@/lib/onboarding/search-loop-control"
 import { generateTopicPromptCollection } from "@/lib/onboarding/topic-prompt-generator"
-
-const WEB_RESEARCH_MAX_STEPS = 8
-const SEARCH_ASSISTED_MODEL_ID = "openai/gpt-5.4-mini"
 
 function uniqueStrings(values: Array<string | null | undefined>) {
   return [...new Set(values.map((value) => value?.trim() ?? "").filter(Boolean))]
@@ -137,9 +138,7 @@ function createEnhanceBrandProfileSharedInput(input: {
       enhanceBrandProfileFieldGuidanceText,
       enhanceBrandProfileOutputRulesText,
     ]),
-    tools: {
-      web_search: getOpenAiWebSearchTool(),
-    },
+    tools: getOnboardingSearchTools(),
   }
 }
 
@@ -148,11 +147,13 @@ async function enhanceBrandProfileWithSearch(input: {
   seedBrandProfile: OnboardingSeedBrandProfile
 }) {
   const sharedInput = createEnhanceBrandProfileSharedInput(input)
+  const searchLoopControl = createSingleSearchStructuredOutputLoopControl(
+    sharedInput.tools,
+    "[onboarding] Search-assisted enhancement disabled tools for final structured output"
+  )
+
   const { output } = await generateText({
-    model: getLanguageModel("openai", {
-      capability: "webSearch",
-      modelId: SEARCH_ASSISTED_MODEL_ID,
-    }),
+    model: getOnboardingSearchModel(),
     output: Output.object({
       description:
         "Enhanced homepage-derived brand profile with external category context, GEO prompt strategy guidance, reputation questions, buying journey, source notes, and uncertainties.",
@@ -160,10 +161,11 @@ async function enhanceBrandProfileWithSearch(input: {
       schema: onboardingGatewayEnhancedBrandProfileSchema,
     }),
     prompt: sharedInput.prompt,
+    providerOptions: ONBOARDING_SEARCH_PROVIDER_OPTIONS,
     system: sharedInput.system,
     temperature: 0,
     tools: sharedInput.tools,
-    stopWhen: stepCountIs(WEB_RESEARCH_MAX_STEPS),
+    ...searchLoopControl,
     onStepFinish({ finishReason, stepNumber, text, toolCalls, toolResults, usage }) {
       console.log("[onboarding] Search-assisted enhancement step finished", {
         finishReason,
@@ -184,10 +186,7 @@ async function enhanceBrandProfileWithStructuredFallback(input: {
   seedBrandProfile: OnboardingSeedBrandProfile
 }) {
   const { output } = await generateText({
-    model: getLanguageModel("openai", {
-      capability: "structuredOutput",
-      modelId: SEARCH_ASSISTED_MODEL_ID,
-    }),
+    model: getOnboardingStructuredOutputModel(),
     output: Output.object({
       description:
         "Enhanced homepage-derived brand profile with external category context, GEO prompt strategy guidance, reputation questions, buying journey, source notes, and uncertainties.",
@@ -198,6 +197,7 @@ async function enhanceBrandProfileWithStructuredFallback(input: {
       homepageArtifact: input.homepageArtifact,
       seedBrandProfile: input.seedBrandProfile,
     }),
+    providerOptions: ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
     system: buildGatewayStructuredOutputSystemPrompt([
       enhanceBrandProfileSystemPrompt,
       enhanceBrandProfileFieldGuidanceText,
@@ -228,10 +228,7 @@ export async function buildSeedBrandProfile(input: {
   })
 
   const { output } = await generateText({
-    model: getLanguageModel("openai", {
-      capability: "structuredOutput",
-      modelId: "openai/gpt-5.4-mini",
-    }),
+    model: getOnboardingStructuredOutputModel(),
     output: Output.object({
       description:
         "Homepage-only brand profile seed with first-party evidence, signals, missing context, and confidence.",
@@ -246,6 +243,7 @@ export async function buildSeedBrandProfile(input: {
       seedBrandProfileFieldGuidanceText,
       seedBrandProfileOutputRulesText,
     ]),
+    providerOptions: ONBOARDING_STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
     temperature: 0,
   })
 
