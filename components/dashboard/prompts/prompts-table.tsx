@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { ArrowDown01Icon, ArrowRight01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
@@ -189,8 +190,16 @@ export function PromptsTable({
                   ? prompts.map((prompt) => (
                       <TableRow key={prompt.id}>
                         <TableCell>
-                          <div className="pl-7 text-sm">
-                            {prompt.prompt_text}
+                          <div className="pl-7">
+                            <div className="text-sm">{prompt.prompt_text}</div>
+                            {prompt.last_chat_prompt_run_id ? (
+                              <Link
+                                className="mt-1 inline-flex text-xs text-muted-foreground underline underline-offset-4"
+                                href={`/dashboard/chats?promptRunId=${prompt.last_chat_prompt_run_id}`}
+                              >
+                                Open chat
+                              </Link>
+                            ) : null}
                           </div>
                         </TableCell>
                         <TableCell>

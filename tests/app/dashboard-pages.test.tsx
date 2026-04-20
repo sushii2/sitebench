@@ -23,6 +23,21 @@ vi.mock("@/lib/tracked-prompts/repository", () => ({
   loadTrackedPromptsByProject: vi.fn().mockResolvedValue([]),
 }))
 
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(),
+}))
+
+vi.mock("@/lib/prompt-pipeline/client", () => ({
+  fetchPromptPipelineConfig: vi.fn().mockResolvedValue({
+    activePrompts: [],
+    activeTopics: [],
+    config: null,
+    hasActiveRun: false,
+  }),
+  savePromptPipelineConfig: vi.fn(),
+  startPromptPipelineQuickRun: vi.fn(),
+}))
+
 const dashboardPages = [
   { heading: "Home", modulePath: "@/app/dashboard/page" },
   { heading: "Prompts", modulePath: "@/app/dashboard/prompts/page" },
@@ -61,6 +76,16 @@ describe("dashboard pages", () => {
 
       if (heading === "Home") {
         expect(screen.getByText("Provider Rankings")).toBeInTheDocument()
+        expect(
+          screen.getByRole("button", {
+            name: /configure prompt pipeline/i,
+          })
+        ).toBeInTheDocument()
+        expect(
+          screen.getByRole("button", {
+            name: /quick run/i,
+          })
+        ).toBeInTheDocument()
         return
       }
 

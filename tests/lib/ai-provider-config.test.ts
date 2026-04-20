@@ -4,6 +4,14 @@ const mockGatewayModel = vi.fn((modelId: string) => ({
   modelId,
   provider: "gateway",
 }))
+const mockAnthropicWebSearch = vi.fn((config?: Record<string, unknown>) => ({
+  config,
+  type: "anthropic_web_search",
+}))
+const mockOpenAiWebSearch = vi.fn((config?: Record<string, unknown>) => ({
+  config,
+  type: "openai_web_search",
+}))
 const mockParallelSearch = vi.fn((config?: Record<string, unknown>) => ({
   config,
   type: "parallel_search",
@@ -26,6 +34,22 @@ vi.mock("ai", () => ({
   createGateway: mockCreateGateway,
 }))
 
+vi.mock("@ai-sdk/anthropic", () => ({
+  anthropic: {
+    tools: {
+      webSearch_20250305: mockAnthropicWebSearch,
+    },
+  },
+}))
+
+vi.mock("@ai-sdk/openai", () => ({
+  openai: {
+    tools: {
+      webSearch: mockOpenAiWebSearch,
+    },
+  },
+}))
+
 vi.mock("@/lib/ai/config", () => ({
   getAiGatewayConfig: () => ({
     apiKey: "gateway-key",
@@ -39,8 +63,10 @@ async function loadProviderConfigModule() {
 describe("provider registry", () => {
   beforeEach(() => {
     vi.resetModules()
+    mockAnthropicWebSearch.mockClear()
     mockCreateGateway.mockClear()
     mockGatewayModel.mockClear()
+    mockOpenAiWebSearch.mockClear()
     mockParallelSearch.mockClear()
     mockPerplexitySearch.mockClear()
   })
@@ -78,7 +104,7 @@ describe("provider registry", () => {
     ).toEqual(["anthropic", "openai"])
     expect(
       getProvidersByCapability("webSearch").map((provider) => provider.id)
-    ).toEqual(["openai", "perplexity"])
+    ).toEqual(["anthropic", "openai", "perplexity"])
     expect(getProvidersByCapability("reasoning")).toEqual([])
   })
 
@@ -91,19 +117,27 @@ describe("provider registry", () => {
       logo: "https://cdn.simpleicons.org/openai",
       models: [
         {
-          id: "openai/gpt-5.4",
-          name: "GPT-5.4",
-        },
-        {
           id: "openai/gpt-5.4-mini",
           name: "GPT-5.4 Mini",
         },
         {
-          id: "openai/gpt-4o-mini-search-preview",
-          name: "GPT-4o Mini Search Preview",
+          id: "openai/gpt-5.4",
+          name: "GPT-5.4",
         },
       ],
       name: "ChatGPT",
+    })
+
+    expect(getProviderDisplayInfo("anthropic")).toEqual({
+      id: "anthropic",
+      logo: "https://cdn.simpleicons.org/anthropic",
+      models: [
+        {
+          id: "anthropic/claude-sonnet-4.6",
+          name: "Claude Sonnet 4.6",
+        },
+      ],
+      name: "Anthropic",
     })
 
     expect(getProviderDisplayInfo("perplexity")).toEqual({
@@ -144,16 +178,6 @@ describe("provider registry", () => {
           structuredOutput: true,
           webSearch: true,
         },
-        id: "openai/gpt-5.4",
-        name: "GPT-5.4",
-      },
-      {
-        capabilities: {
-          reasoning: false,
-          streamingResponse: true,
-          structuredOutput: true,
-          webSearch: true,
-        },
         id: "openai/gpt-5.4-mini",
         name: "GPT-5.4 Mini",
       },
@@ -164,18 +188,23 @@ describe("provider registry", () => {
           structuredOutput: true,
           webSearch: true,
         },
-        id: "openai/gpt-4o-mini-search-preview",
-        name: "GPT-4o Mini Search Preview",
+        id: "openai/gpt-5.4",
+        name: "GPT-5.4",
       },
     ])
 
-    expect(getDefaultModel("openai")?.id).toBe("openai/gpt-5.4")
-    expect(getDefaultModel("openai", "webSearch")?.id).toBe("openai/gpt-5.4")
+    expect(getDefaultModel("openai")?.id).toBe("openai/gpt-5.4-mini")
+    expect(getDefaultModel("openai", "webSearch")?.id).toBe(
+      "openai/gpt-5.4-mini"
+    )
     expect(getDefaultModel("perplexity")?.id).toBe("perplexity/sonar")
     expect(getDefaultModel("perplexity", "webSearch")?.id).toBe(
       "perplexity/sonar"
     )
-    expect(getDefaultModel("anthropic", "webSearch")).toBeNull()
+    expect(getDefaultModel("anthropic")?.id).toBe("anthropic/claude-sonnet-4.6")
+    expect(getDefaultModel("anthropic", "webSearch")?.id).toBe(
+      "anthropic/claude-sonnet-4.6"
+    )
     expect(
       getProviderModels("openai", {
         openai: false,
@@ -193,7 +222,7 @@ describe("provider registry", () => {
         capability: "structuredOutput",
       })
     ).toEqual({
-      modelId: "openai/gpt-5.4",
+      modelId: "openai/gpt-5.4-mini",
       provider: "gateway",
     })
     expect(
@@ -201,14 +230,22 @@ describe("provider registry", () => {
         capability: "webSearch",
       })
     ).toEqual({
-      modelId: "openai/gpt-5.4",
+      modelId: "openai/gpt-5.4-mini",
+      provider: "gateway",
+    })
+    expect(
+      getLanguageModel("anthropic", {
+        capability: "webSearch",
+      })
+    ).toEqual({
+      modelId: "anthropic/claude-sonnet-4.6",
       provider: "gateway",
     })
 
     expect(mockCreateGateway).toHaveBeenCalledWith({
       apiKey: "gateway-key",
     })
-    expect(mockGatewayModel).toHaveBeenCalledWith("openai/gpt-5.4")
+    expect(mockGatewayModel).toHaveBeenCalledWith("openai/gpt-5.4-mini")
 
     expect(() =>
       getLanguageModel("openai", {
@@ -216,6 +253,37 @@ describe("provider registry", () => {
         overrides: { openai: false },
       })
     ).toThrow('Provider "openai" is disabled')
+  })
+
+  it("builds native provider web search tools for OpenAI and Anthropic", async () => {
+    const { getAnthropicWebSearchTool, getOpenAiWebSearchTool } =
+      await loadProviderConfigModule()
+
+    expect(getOpenAiWebSearchTool()).toEqual({
+      config: {
+        userLocation: {
+          country: "US",
+          type: "approximate",
+        },
+      },
+      type: "openai_web_search",
+    })
+    expect(mockOpenAiWebSearch).toHaveBeenCalledWith({
+      userLocation: {
+        country: "US",
+        type: "approximate",
+      },
+    })
+
+    expect(getAnthropicWebSearchTool()).toEqual({
+      config: {
+        maxUses: 5,
+      },
+      type: "anthropic_web_search",
+    })
+    expect(mockAnthropicWebSearch).toHaveBeenCalledWith({
+      maxUses: 5,
+    })
   })
 
   it("builds a Parallel search tool with the configured defaults", async () => {

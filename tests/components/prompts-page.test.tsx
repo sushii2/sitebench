@@ -84,7 +84,10 @@ describe("PromptsPage", () => {
         score_metadata: {},
         source_analysis_run_id: null,
         is_active: true,
+        last_chat_prompt_run_id: "prompt-run-1",
+        last_failure_message: null,
         next_run_at: null,
+        last_run_status: "completed",
         last_run_at: null,
         created_at: "2026-04-05T00:00:00.000Z",
         updated_at: "2026-04-05T00:00:00.000Z",
@@ -109,6 +112,9 @@ describe("PromptsPage", () => {
     expect(screen.getByRole("tab", { name: /chatgpt/i })).toBeInTheDocument()
     expect(screen.getByRole("tab", { name: /claude/i })).toBeInTheDocument()
     expect(screen.getByRole("tab", { name: /perplexity/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole("link", { name: /open chat/i })
+    ).toHaveAttribute("href", "/dashboard/chats?promptRunId=prompt-run-1")
   })
 
   it("shows the empty state when there are no topics", async () => {

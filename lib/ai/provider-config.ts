@@ -1,6 +1,7 @@
 import "server-only"
 
 import { createGateway } from "ai"
+import { anthropic } from "@ai-sdk/anthropic"
 import { openai } from "@ai-sdk/openai"
 
 import { getAiGatewayConfig } from "@/lib/ai/config"
@@ -77,12 +78,14 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderRegistryEntry> = {
     capabilities: createCapabilityMap({
       streamingResponse: true,
       structuredOutput: true,
+      webSearch: true,
     }),
     capabilityDefaultModelIds: {
-      streamingResponse: "anthropic/claude-haiku-4.5",
-      structuredOutput: "anthropic/claude-haiku-4.5",
+      streamingResponse: "anthropic/claude-sonnet-4.6",
+      structuredOutput: "anthropic/claude-sonnet-4.6",
+      webSearch: "anthropic/claude-sonnet-4.6",
     },
-    defaultModelId: "anthropic/claude-haiku-4.5",
+    defaultModelId: "anthropic/claude-sonnet-4.6",
     id: "anthropic",
     logo: "https://cdn.simpleicons.org/anthropic",
     models: [
@@ -90,9 +93,10 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderRegistryEntry> = {
         capabilities: createCapabilityMap({
           streamingResponse: true,
           structuredOutput: true,
+          webSearch: true,
         }),
-        id: "anthropic/claude-haiku-4.5",
-        name: "Claude Haiku 4.5",
+        id: "anthropic/claude-sonnet-4.6",
+        name: "Claude Sonnet 4.6",
       },
     ],
     name: "Anthropic",
@@ -104,23 +108,14 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderRegistryEntry> = {
       webSearch: true,
     }),
     capabilityDefaultModelIds: {
-      streamingResponse: "openai/gpt-5.4",
-      structuredOutput: "openai/gpt-5.4",
-      webSearch: "openai/gpt-5.4",
+      streamingResponse: "openai/gpt-5.4-mini",
+      structuredOutput: "openai/gpt-5.4-mini",
+      webSearch: "openai/gpt-5.4-mini",
     },
-    defaultModelId: "openai/gpt-5.4",
+    defaultModelId: "openai/gpt-5.4-mini",
     id: "openai",
     logo: "https://cdn.simpleicons.org/openai",
     models: [
-      {
-        capabilities: createCapabilityMap({
-          streamingResponse: true,
-          structuredOutput: true,
-          webSearch: true,
-        }),
-        id: "openai/gpt-5.4",
-        name: "GPT-5.4",
-      },
       {
         capabilities: createCapabilityMap({
           streamingResponse: true,
@@ -136,8 +131,8 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderRegistryEntry> = {
           structuredOutput: true,
           webSearch: true,
         }),
-        id: "openai/gpt-4o-mini-search-preview",
-        name: "GPT-4o Mini Search Preview",
+        id: "openai/gpt-5.4",
+        name: "GPT-5.4",
       },
     ],
     name: "ChatGPT",
@@ -390,6 +385,12 @@ export function getOpenAiWebSearchTool() {
       type: "approximate",
       country: "US",
     },
+  })
+}
+
+export function getAnthropicWebSearchTool() {
+  return anthropic.tools.webSearch_20250305({
+    maxUses: 5,
   })
 }
 
