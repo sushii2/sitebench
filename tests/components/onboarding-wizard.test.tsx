@@ -13,6 +13,8 @@ const mockFetchOnboardingTopicPrompts = vi.fn()
 const mockCompleteOnboarding = vi.fn()
 const mockStartOnboardingAnalysis = vi.fn()
 const mockPollOnboardingAnalysis = vi.fn()
+const mockToastError = vi.fn()
+const mockToastWarning = vi.fn()
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -47,6 +49,13 @@ vi.mock("@/lib/brands", async () => {
     saveBrandDraftStep: mockSaveBrandDraftStep,
   }
 })
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: mockToastError,
+    warning: mockToastWarning,
+  },
+}))
 
 function makeUser() {
   return {
@@ -415,6 +424,8 @@ beforeEach(() => {
   mockCompleteOnboarding.mockReset()
   mockStartOnboardingAnalysis.mockReset()
   mockPollOnboardingAnalysis.mockReset()
+  mockToastError.mockReset()
+  mockToastWarning.mockReset()
   process.env.NEXT_PUBLIC_LOGO_DEV_PUBLISHABLE_KEY = "pk_test_123"
 
   mockStartOnboardingAnalysis.mockResolvedValue({
@@ -667,7 +678,7 @@ describe("Onboarding wizard", () => {
     expect(await screen.findByText("https://acme.com")).toBeInTheDocument()
   })
 
-  it("shows an inline error when saving step 1 fails", async () => {
+  it("shows a toast error when saving step 1 fails", async () => {
     const user = userEvent.setup()
 
     mockSaveBrandDraftStep.mockRejectedValue(new Error("Schema mismatch"))
@@ -678,7 +689,11 @@ describe("Onboarding wizard", () => {
     await user.type(screen.getByLabelText("Company name"), "Acme")
     await user.click(screen.getByRole("button", { name: "Continue" }))
 
-    expect(await screen.findByText("Schema mismatch")).toBeInTheDocument()
+    await waitFor(() =>
+      expect(mockToastError).toHaveBeenCalledWith("Unable to save this step", {
+        description: "Schema mismatch",
+      })
+    )
     expect(
       screen.getByRole("heading", { name: "Let's set up your brand" })
     ).toBeInTheDocument()
@@ -726,7 +741,7 @@ describe("Onboarding wizard", () => {
     expect(screen.getByDisplayValue("Suggested description")).toBeInTheDocument()
   })
 
-  it("shows an inline loading state while step 1 analysis is in flight", async () => {
+  it("shows the analysis timeline while step 1 analysis is in flight", async () => {
     const user = userEvent.setup()
 
     let resolveAnalysis: (
@@ -757,9 +772,7 @@ describe("Onboarding wizard", () => {
     await user.type(screen.getByLabelText("Company name"), "Acme")
     await user.click(screen.getByRole("button", { name: "Continue" }))
 
-    expect(
-      await screen.findByText("Analyzing your website context")
-    ).toBeInTheDocument()
+    expect(await screen.findByText("Analyzing your website")).toBeInTheDocument()
     await waitFor(() =>
       expect(mockPollOnboardingAnalysis).toHaveBeenCalledWith("analysis-1")
     )
@@ -938,7 +951,7 @@ describe("Onboarding wizard", () => {
       })
     )
 
-    const topicInput = screen.getByLabelText("Add a topic")
+    const topicInput = screen.getByPlaceholderText("AI search")
 
     await user.type(topicInput, "AI Search")
     await user.keyboard("{Enter}")
@@ -946,9 +959,9 @@ describe("Onboarding wizard", () => {
     await user.keyboard("{Enter}")
 
     expect(screen.getAllByText("ai search")).toHaveLength(1)
-    expect(
-      await screen.findByText("That topic is already added.")
-    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(mockToastError).toHaveBeenCalledWith("That topic is already added.")
+    )
 
     for (const topic of [
       "Google AI Mode",
@@ -972,9 +985,11 @@ describe("Onboarding wizard", () => {
     await user.type(topicInput, "One too many")
     await user.keyboard("{Enter}")
 
-    expect(
-      await screen.findByText("You can add up to 12 topics.")
-    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(mockToastError).toHaveBeenCalledWith("Topic limit reached", {
+        description: "You can add up to 12 topics.",
+      })
+    )
   })
 
   it("restores saved draft values and lands on the first incomplete step", async () => {
@@ -1092,7 +1107,7 @@ describe("Onboarding wizard", () => {
     logSpy.mockRestore()
   })
 
-  it("shows warnings from generated suggestions and still advances", async () => {
+  it("shows warning toasts from generated suggestions and still advances", async () => {
     const user = userEvent.setup()
 
     mockSaveBrandDraftStep.mockResolvedValue(
@@ -1124,9 +1139,14 @@ describe("Onboarding wizard", () => {
     expect(
       await screen.findByRole("heading", { name: "Describe what you do" })
     ).toBeInTheDocument()
-    expect(
-      screen.getByText(/We found fewer than 3 strong topics\./)
-    ).toBeInTheDocument()
+    expect(mockToastWarning).toHaveBeenCalledWith(
+      "Analysis finished with warnings",
+      expect.objectContaining({
+        description: expect.stringContaining(
+          "We found fewer than 3 strong topics. Review and add topics before continuing."
+        ),
+      })
+    )
 
     mockSaveBrandDraftStep.mockResolvedValue(
       makeBrand({
@@ -1146,12 +1166,9 @@ describe("Onboarding wizard", () => {
     expect(
       await screen.findByRole("heading", { name: "Add your competitors" })
     ).toBeInTheDocument()
-    expect(
-      screen.getByText(/We found fewer than 3 strong topics\./)
-    ).toBeInTheDocument()
   })
 
-  it("shows a page warning when the AI could not load any topics or competitors", async () => {
+  it("shows a warning toast when the AI could not load any topics or competitors", async () => {
     const user = userEvent.setup()
 
     mockSaveBrandDraftStep.mockResolvedValue(
@@ -1179,12 +1196,22 @@ describe("Onboarding wizard", () => {
     expect(
       await screen.findByRole("heading", { name: "Describe what you do" })
     ).toBeInTheDocument()
-    expect(
-      screen.getByText(/The analysis could not load any topics\./)
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText(/The analysis could not load any competitors\./)
-    ).toBeInTheDocument()
+    expect(mockToastWarning).toHaveBeenCalledWith(
+      "Analysis finished with warnings",
+      expect.objectContaining({
+        description: expect.stringContaining(
+          "The analysis could not load any topics. Review this step manually."
+        ),
+      })
+    )
+    expect(mockToastWarning).toHaveBeenCalledWith(
+      "Analysis finished with warnings",
+      expect.objectContaining({
+        description: expect.stringContaining(
+          "The analysis could not load any competitors. Review this step manually."
+        ),
+      })
+    )
   })
 
   it("replaces local generated values when step 1 is submitted again", async () => {
@@ -1367,7 +1394,7 @@ describe("Onboarding wizard", () => {
   it("refreshes the full catalog while preserving custom topics and removed prompt exclusions", async () => {
     const user = await renderWizardAtTopicReview()
 
-    await user.type(screen.getByLabelText("Add a topic"), "owned geo strategy")
+    await user.type(screen.getByPlaceholderText("AI search"), "owned geo strategy")
     await user.click(screen.getByRole("button", { name: "Add topic" }))
     expect(screen.getByText("owned geo strategy")).toBeInTheDocument()
 
@@ -1614,7 +1641,7 @@ describe("Onboarding wizard", () => {
     ).toBeInTheDocument()
   })
 
-  it("shows an inline error when final completion fails", async () => {
+  it("shows a toast error when final completion fails", async () => {
     const user = userEvent.setup()
     mockCompleteOnboarding.mockRejectedValue(new Error("Completion unavailable"))
 
@@ -1644,9 +1671,11 @@ describe("Onboarding wizard", () => {
     )
     await user.click(screen.getByRole("button", { name: "Complete setup" }))
 
-    expect(
-      await screen.findByText("Completion unavailable")
-    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(mockToastError).toHaveBeenCalledWith("Unable to complete setup", {
+        description: "Completion unavailable",
+      })
+    )
     expect(mockReplace).not.toHaveBeenCalled()
   })
 
@@ -1673,9 +1702,9 @@ describe("Onboarding wizard", () => {
     await user.click(screen.getByRole("button", { name: "Continue" }))
 
     expect(mockFetchOnboardingTopicPrompts).not.toHaveBeenCalled()
-    expect(
-      await screen.findByText("Add at least 3 competitors.")
-    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(mockToastError).toHaveBeenCalledWith("Add at least 3 competitors.")
+    )
   })
 
   it("revalidates earlier steps before completing onboarding", async () => {

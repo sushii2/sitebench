@@ -1,4 +1,5 @@
 import type { OnboardingHomepageScrapeArtifact } from "@/lib/onboarding/types"
+import { stripDuplicatedHomepageBodies } from "@/lib/onboarding/firecrawl-payload"
 
 export const SEED_BRAND_PROFILE_PROMPT_VERSION = "2026-04-19.seed.v1"
 
@@ -45,17 +46,16 @@ export const seedBrandProfileOutputRulesText = [
 export function buildSeedBrandProfilePrompt(input: {
   homepageArtifact: OnboardingHomepageScrapeArtifact
 }) {
+  const sanitizedRawFirecrawlResponse = stripDuplicatedHomepageBodies(
+    input.homepageArtifact.rawFirecrawlResponse
+  )
+
   return [
     `PROMPT_VERSION:\n${SEED_BRAND_PROFILE_PROMPT_VERSION}`,
     `EXACT_HOMEPAGE_URL:\n${input.homepageArtifact.homepageUrl}`,
     `NORMALIZED_DOMAIN:\n${input.homepageArtifact.domain}`,
     `FIRECRAWL_METADATA_JSON:\n${JSON.stringify(input.homepageArtifact.metadata, null, 2)}`,
-    `RAW_FIRECRAWL_RESPONSE_JSON:\n${JSON.stringify(
-      input.homepageArtifact.rawFirecrawlResponse,
-      null,
-      2
-    )}`,
+    `RAW_FIRECRAWL_RESPONSE_JSON:\n${JSON.stringify(sanitizedRawFirecrawlResponse, null, 2)}`,
     `HOMEPAGE_MARKDOWN:\n${input.homepageArtifact.markdown}`,
-    `HOMEPAGE_HTML:\n${input.homepageArtifact.html}`,
   ].join("\n\n")
 }

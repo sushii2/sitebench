@@ -2,6 +2,7 @@ import Firecrawl from "@mendable/firecrawl-js"
 
 import { normalizeWebsite, parsePublicWebsiteUrl } from "@/lib/brands"
 import { getOnboardingConfig } from "@/lib/onboarding/config"
+import { stripDuplicatedHomepageBodies } from "@/lib/onboarding/firecrawl-payload"
 import {
   onboardingHomepageScrapeArtifactSchema,
   onboardingScrapeContextSchema,
@@ -92,7 +93,7 @@ function toHomepageScrapeArtifact(input: {
     homepageUrl,
     metadata: toJsonRecord(input.document.metadata ?? {}),
     normalizedHomepageUrl,
-    rawFirecrawlResponse: toJsonRecord(input.document),
+    rawFirecrawlResponse: stripDuplicatedHomepageBodies(toJsonRecord(input.document)),
   })
 }
 
