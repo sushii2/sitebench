@@ -6,6 +6,8 @@ import {
 } from "@/lib/chats/repository"
 import type { AiPlatform } from "@/lib/ai-platforms/types"
 
+type RawRunParam = Parameters<typeof mapChatSummaryRows>[0][number]
+
 const platforms: AiPlatform[] = [
   {
     code: "chatgpt",
@@ -33,12 +35,9 @@ const platforms: AiPlatform[] = [
   },
 ]
 
-function makeRawRun(overrides: Record<string, unknown> = {}) {
+function makeRawRun(overrides: Partial<RawRunParam> = {}): RawRunParam {
   return {
-    cadence_applied: "daily",
     completed_at: "2026-04-20T12:00:00.000Z",
-    created_at: "2026-04-20T10:00:00.000Z",
-    failure_reason: null,
     id: "run-1",
     project_id: "project-1",
     project_topic_id: "topic-1",
@@ -69,14 +68,12 @@ function makeRawRun(overrides: Record<string, unknown> = {}) {
       },
     ],
     scheduled_for: "2026-04-20T10:00:00.000Z",
-    started_at: "2026-04-20T10:00:01.000Z",
     status: "completed",
     tracked_prompt_id: "prompt-1",
     tracked_prompts: {
       id: "prompt-1",
       prompt_text: "Best Next.js deployment platform?",
     },
-    trigger_type: "scheduled",
     ...overrides,
   }
 }
