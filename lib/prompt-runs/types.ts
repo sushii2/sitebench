@@ -1,5 +1,10 @@
 export type PromptRunTriggerType = "scheduled" | "manual" | "backfill"
-export type PromptRunCadence = "daily" | "weekly" | "monthly" | "manual"
+export type PromptRunCadence =
+  | "daily"
+  | "every_2_days"
+  | "every_3_days"
+  | "weekly"
+  | "manual"
 export type PromptRunStatus =
   | "queued"
   | "running"

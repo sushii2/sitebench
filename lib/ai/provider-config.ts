@@ -1,6 +1,7 @@
 import "server-only"
 
 import { createGateway } from "ai"
+import { anthropic } from "@ai-sdk/anthropic"
 import { openai } from "@ai-sdk/openai"
 
 import { getAiGatewayConfig } from "@/lib/ai/config"
@@ -51,6 +52,9 @@ type ParallelSearchConfig = Parameters<
 type PerplexitySearchConfig = Parameters<
   GatewayProviderInstance["tools"]["perplexitySearch"]
 >[0]
+type AnthropicWebSearchConfig = Parameters<
+  typeof anthropic.tools.webSearch_20250305
+>[0]
 
 type ProviderRegistryEntry = ProviderConfig & {
   capabilityDefaultModelIds: Partial<Record<ProviderCapability, string>>
@@ -77,15 +81,26 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderRegistryEntry> = {
     capabilities: createCapabilityMap({
       streamingResponse: true,
       structuredOutput: true,
+      webSearch: true,
     }),
     capabilityDefaultModelIds: {
-      streamingResponse: "anthropic/claude-haiku-4.5",
-      structuredOutput: "anthropic/claude-haiku-4.5",
+      streamingResponse: "anthropic/claude-sonnet-4.6",
+      structuredOutput: "anthropic/claude-sonnet-4.6",
+      webSearch: "anthropic/claude-sonnet-4.6",
     },
-    defaultModelId: "anthropic/claude-haiku-4.5",
+    defaultModelId: "anthropic/claude-sonnet-4.6",
     id: "anthropic",
     logo: "https://cdn.simpleicons.org/anthropic",
     models: [
+      {
+        capabilities: createCapabilityMap({
+          streamingResponse: true,
+          structuredOutput: true,
+          webSearch: true,
+        }),
+        id: "anthropic/claude-sonnet-4.6",
+        name: "Claude Sonnet 4.6",
+      },
       {
         capabilities: createCapabilityMap({
           streamingResponse: true,
@@ -391,6 +406,21 @@ export function getOpenAiWebSearchTool() {
       country: "US",
     },
   })
+}
+
+export function getAnthropicWebSearchTool(
+  options?: AnthropicWebSearchConfig
+) {
+  if (!options) {
+    return anthropic.tools.webSearch_20250305({
+      userLocation: {
+        type: "approximate",
+        country: "US",
+      },
+    })
+  }
+
+  return anthropic.tools.webSearch_20250305(options)
 }
 
 export function getParallelWebSearchTool(

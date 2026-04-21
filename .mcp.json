@@ -1,11 +1,29 @@
 {
   "mcpServers": {
     "shadcn": {
-      "command": "npx",
       "args": [
         "shadcn@latest",
         "mcp"
-      ]
+      ],
+      "command": "npx"
+    },
+    "trigger": {
+      "args": [
+        "trigger.dev@latest",
+        "mcp"
+      ],
+      "command": "npx"
+    },
+    "insforge": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@insforge/mcp@latest"
+      ],
+      "env": {
+        "API_KEY": "ik_20d01a3d26c523ebc2c9ed09901d9a72",
+        "API_BASE_URL": "https://76ykma3t.us-east.insforge.app"
+      }
     }
   }
 }
