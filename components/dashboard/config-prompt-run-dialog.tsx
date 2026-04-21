@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { PromptsSelectionTable } from "@/components/dashboard/prompts-selection-table"
 import type { PromptRunConfig } from "@/lib/prompt-run-configs/types"
 import type { PromptRunConfigRequest } from "@/lib/prompt-run-configs/schemas"
 import type { ProjectTopic } from "@/lib/project-topics/types"
@@ -81,18 +82,6 @@ export function ConfigPromptRunDialog({
     new Set()
   )
 
-  const promptsByTopic = React.useMemo(() => {
-    return topics
-      .filter((topic) => topic.is_active)
-      .map((topic) => ({
-        prompts: prompts.filter(
-          (prompt) => prompt.is_active && prompt.project_topic_id === topic.id
-        ),
-        topic,
-      }))
-      .filter(({ prompts: topicPrompts }) => topicPrompts.length > 0)
-  }, [prompts, topics])
-
   React.useEffect(() => {
     if (!open) {
       return
@@ -105,6 +94,16 @@ export function ConfigPromptRunDialog({
     setScheduledRunLocalTime(defaults.scheduledRunLocalTime)
     setSelectedPromptIds(defaults.selectedPromptIds)
   }, [config, open])
+
+  const activeTopics = React.useMemo(
+    () => topics.filter((topic) => topic.is_active),
+    [topics]
+  )
+
+  const activePrompts = React.useMemo(
+    () => prompts.filter((prompt) => prompt.is_active),
+    [prompts]
+  )
 
   const selectedTopicIds = React.useMemo(() => {
     return [
@@ -135,40 +134,6 @@ export function ConfigPromptRunDialog({
     })
   }
 
-  function toggleTopic(topicId: string, checked: boolean) {
-    const topicPromptIds = prompts
-      .filter((prompt) => prompt.project_topic_id === topicId && prompt.is_active)
-      .map((prompt) => prompt.id)
-
-    setSelectedPromptIds((current) => {
-      const next = new Set(current)
-
-      for (const promptId of topicPromptIds) {
-        if (checked) {
-          next.add(promptId)
-        } else {
-          next.delete(promptId)
-        }
-      }
-
-      return next
-    })
-  }
-
-  function togglePrompt(promptId: string, checked: boolean) {
-    setSelectedPromptIds((current) => {
-      const next = new Set(current)
-
-      if (checked) {
-        next.add(promptId)
-      } else {
-        next.delete(promptId)
-      }
-
-      return next
-    })
-  }
-
   function handleSubmit() {
     if (!canSubmit) {
       return
@@ -189,7 +154,7 @@ export function ConfigPromptRunDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] gap-5 overflow-y-auto p-6 text-sm sm:max-w-3xl">
+      <DialogContent className="max-h-[90vh] gap-5 overflow-y-auto p-6 text-sm sm:max-w-4xl">
         <DialogHeader className="gap-2">
           <DialogTitle className="font-heading text-lg font-medium">
             Config Prompt Run
@@ -270,49 +235,18 @@ export function ConfigPromptRunDialog({
             <CardHeader className="border-b">
               <CardTitle>Topics and prompts</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {promptsByTopic.length === 0 ? (
+            <CardContent>
+              {activePrompts.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
                   Add tracked prompts first to configure scheduled runs.
                 </p>
               ) : (
-                promptsByTopic.map(({ prompts: topicPrompts, topic }) => {
-                  const topicSelected = topicPrompts.every((prompt) =>
-                    selectedPromptIds.has(prompt.id)
-                  )
-
-                  return (
-                    <div key={topic.id} className="space-y-2 border-b pb-4 last:border-b-0">
-                      <label className="flex items-center gap-2 text-xs font-medium">
-                        <input
-                          checked={topicSelected}
-                          type="checkbox"
-                          onChange={(event) =>
-                            toggleTopic(topic.id, event.target.checked)
-                          }
-                        />
-                        <span>{topic.name}</span>
-                      </label>
-                      <div className="space-y-2 pl-5">
-                        {topicPrompts.map((prompt) => (
-                          <label
-                            key={prompt.id}
-                            className="flex items-start gap-2 text-xs text-muted-foreground"
-                          >
-                            <input
-                              checked={selectedPromptIds.has(prompt.id)}
-                              type="checkbox"
-                              onChange={(event) =>
-                                togglePrompt(prompt.id, event.target.checked)
-                              }
-                            />
-                            <span>{prompt.prompt_text}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })
+                <PromptsSelectionTable
+                  prompts={activePrompts}
+                  topics={activeTopics}
+                  selectedPromptIds={selectedPromptIds}
+                  onSelectionChange={setSelectedPromptIds}
+                />
               )}
             </CardContent>
           </Card>

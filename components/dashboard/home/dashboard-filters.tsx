@@ -12,12 +12,19 @@ import {
 } from "@/components/ui/select"
 
 const platforms = ["All Platforms", "ChatGPT", "Gemini", "Claude", "Grok"]
-const dateRanges = ["Last 7 Days", "Last 14 Days", "Last 30 Days", "Last 90 Days"]
+const dateRanges = [
+  "Latest Prompt Run",
+  "Last 2 Days",
+  "Last 3 Days",
+  "Last 1 Week",
+  "Last 2 Weeks",
+  "Last Month",
+]
 
 export function DashboardFilters() {
   const { brand } = useAuth()
   const [platform, setPlatform] = React.useState("All Platforms")
-  const [dateRange, setDateRange] = React.useState("Last 7 Days")
+  const [dateRange, setDateRange] = React.useState("Latest Prompt Run")
   const [topic, setTopic] = React.useState("All Topics")
 
   const topics = ["All Topics", ...(brand?.topics ?? [])]
