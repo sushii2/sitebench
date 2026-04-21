@@ -6,14 +6,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/components/auth-provider"
 import { ChatsFilterBar } from "@/components/dashboard/chats/chats-filter-bar"
 import { ChatsList } from "@/components/dashboard/chats/chats-list"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { loadActiveAiPlatforms } from "@/lib/ai-platforms/repository"
 import { loadBrandEntitiesByProject } from "@/lib/brand-entities/repository"
 import type { BrandEntity } from "@/lib/brand-entities/types"
 import {
   applyFilters,
-  emptyFilters,
   filtersFromQueryString,
   filtersToQueryString,
   type ChatFilters,
@@ -145,7 +144,7 @@ export function ChatsPage() {
     <div className="flex flex-1 flex-col p-4 pt-0">
       <Card className="min-h-[calc(100svh-6rem)]">
         <CardHeader>
-          <CardTitle className="text-2xl">Chats</CardTitle>
+          <h1 className="text-2xl font-semibold tracking-tight">Chats</h1>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <ChatsFilterBar

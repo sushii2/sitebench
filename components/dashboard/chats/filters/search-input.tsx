@@ -14,10 +14,12 @@ export function SearchInput({
   value: string
 }) {
   const [local, setLocal] = React.useState(value)
+  const [syncedValue, setSyncedValue] = React.useState(value)
 
-  React.useEffect(() => {
+  if (syncedValue !== value) {
+    setSyncedValue(value)
     setLocal(value)
-  }, [value])
+  }
 
   React.useEffect(() => {
     if (local === value) {

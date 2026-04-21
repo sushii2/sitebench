@@ -35,6 +35,26 @@ vi.mock("@/lib/tracked-prompts/repository", () => ({
   loadTrackedPromptsByProject: vi.fn().mockResolvedValue([]),
 }))
 
+vi.mock("@/lib/brand-entities/repository", () => ({
+  loadBrandEntitiesByProject: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock("@/lib/ai-platforms/repository", () => ({
+  loadActiveAiPlatforms: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock("@/lib/chats/repository", () => ({
+  listChats: vi.fn().mockResolvedValue([]),
+  listPipelineRunBatches: vi.fn().mockResolvedValue([]),
+  listProjectSourceDomains: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/dashboard/chats",
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+}))
+
 const dashboardPages = [
   { heading: "Home", modulePath: "@/app/dashboard/page" },
   { heading: "Prompts", modulePath: "@/app/dashboard/prompts/page" },

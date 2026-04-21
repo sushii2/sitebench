@@ -22,12 +22,9 @@ export function ChatsList({
 }) {
   const [page, setPage] = React.useState(0)
 
-  React.useEffect(() => {
-    setPage(0)
-  }, [chats])
-
   const pageCount = Math.max(1, Math.ceil(chats.length / PAGE_SIZE))
-  const start = page * PAGE_SIZE
+  const effectivePage = Math.min(page, pageCount - 1)
+  const start = effectivePage * PAGE_SIZE
   const rows = chats.slice(start, start + PAGE_SIZE)
 
   if (chats.length === 0) {
@@ -62,8 +59,8 @@ export function ChatsList({
               type="button"
               variant="outline"
               size="icon-sm"
-              onClick={() => setPage((value) => Math.max(0, value - 1))}
-              disabled={page === 0}
+              onClick={() => setPage(Math.max(0, effectivePage - 1))}
+              disabled={effectivePage === 0}
               aria-label="Previous page"
             >
               <HugeiconsIcon
@@ -73,16 +70,14 @@ export function ChatsList({
               />
             </Button>
             <span className="px-2 tabular-nums">
-              Page {page + 1} of {pageCount}
+              Page {effectivePage + 1} of {pageCount}
             </span>
             <Button
               type="button"
               variant="outline"
               size="icon-sm"
-              onClick={() =>
-                setPage((value) => Math.min(pageCount - 1, value + 1))
-              }
-              disabled={page === pageCount - 1}
+              onClick={() => setPage(Math.min(pageCount - 1, effectivePage + 1))}
+              disabled={effectivePage === pageCount - 1}
               aria-label="Next page"
             >
               <HugeiconsIcon
