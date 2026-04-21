@@ -1,5 +1,5 @@
-import { DashboardPage } from "@/components/dashboard-page"
+import { ChatsPage } from "@/components/dashboard/chats/chats-page"
 
-export default function ChatsPage() {
-  return <DashboardPage title="Chats" />
+export default function Page() {
+  return <ChatsPage />
 }
