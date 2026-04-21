@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest"
 import {
   applyFilters,
   emptyFilters,
+  filtersFromQueryString,
+  filtersToQueryString,
   hasActiveFilters,
 } from "@/lib/chats/filters"
 import type { ChatSummary } from "@/lib/chats/types"
@@ -169,5 +171,48 @@ describe("chat filters", () => {
       hasActiveFilters({ ...emptyFilters(), topicIds: ["topic-a"] })
     ).toBe(true)
     expect(hasActiveFilters({ ...emptyFilters(), search: "x" })).toBe(true)
+  })
+
+  describe("url serialization", () => {
+    it("round-trips an empty filter set", () => {
+      const qs = filtersToQueryString(emptyFilters())
+      const parsed = filtersFromQueryString(new URLSearchParams(qs))
+
+      expect(parsed).toEqual(emptyFilters())
+    })
+
+    it("round-trips a fully populated filter set", () => {
+      const filters = {
+        brandEntityIds: ["brand-a", "brand-b"],
+        customRange: { from: "2026-04-01", to: "2026-04-15" },
+        pipelineRunDate: null,
+        search: "deploy next",
+        sourceDomainIds: ["domain-1"],
+        timeframe: "custom" as const,
+        topicIds: ["topic-a"],
+        trackedPromptIds: ["prompt-a", "prompt-b"],
+      }
+
+      const qs = filtersToQueryString(filters)
+      const parsed = filtersFromQueryString(new URLSearchParams(qs))
+
+      expect(parsed).toEqual(filters)
+    })
+
+    it("drops unknown timeframe values when parsing", () => {
+      const parsed = filtersFromQueryString(
+        new URLSearchParams("timeframe=bogus")
+      )
+
+      expect(parsed.timeframe).toBeNull()
+    })
+
+    it("drops unknown or malformed pipelineRunDate", () => {
+      const parsed = filtersFromQueryString(
+        new URLSearchParams("pipelineRunDate=not-a-date")
+      )
+
+      expect(parsed.pipelineRunDate).toBeNull()
+    })
   })
 })

@@ -131,3 +131,94 @@ export function applyFilters(
     return true
   })
 }
+
+const TIMEFRAMES: ChatTimeframe[] = ["today", "7d", "30d", "90d", "custom"]
+
+function isTimeframe(value: string | null): value is ChatTimeframe {
+  return value !== null && (TIMEFRAMES as string[]).includes(value)
+}
+
+function isIsoDate(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value))
+}
+
+export function filtersToQueryString(filters: ChatFilters): string {
+  const params = new URLSearchParams()
+
+  if (filters.pipelineRunDate) {
+    params.set("pipelineRunDate", filters.pipelineRunDate)
+  }
+
+  if (filters.timeframe) {
+    params.set("timeframe", filters.timeframe)
+  }
+
+  if (filters.customRange) {
+    params.set("from", filters.customRange.from)
+    params.set("to", filters.customRange.to)
+  }
+
+  if (filters.topicIds.length > 0) {
+    params.set("topics", filters.topicIds.join(","))
+  }
+
+  if (filters.trackedPromptIds.length > 0) {
+    params.set("prompts", filters.trackedPromptIds.join(","))
+  }
+
+  if (filters.brandEntityIds.length > 0) {
+    params.set("brands", filters.brandEntityIds.join(","))
+  }
+
+  if (filters.sourceDomainIds.length > 0) {
+    params.set("sources", filters.sourceDomainIds.join(","))
+  }
+
+  if (filters.search.trim().length > 0) {
+    params.set("q", filters.search.trim())
+  }
+
+  return params.toString()
+}
+
+function splitList(value: string | null): string[] {
+  if (!value) {
+    return []
+  }
+
+  return value
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+}
+
+export function filtersFromQueryString(params: URLSearchParams): ChatFilters {
+  const next = emptyFilters()
+
+  const pipelineRunDate = params.get("pipelineRunDate")
+
+  if (pipelineRunDate && isIsoDate(pipelineRunDate)) {
+    next.pipelineRunDate = pipelineRunDate
+  }
+
+  const timeframe = params.get("timeframe")
+
+  if (isTimeframe(timeframe)) {
+    next.timeframe = timeframe
+  }
+
+  const from = params.get("from")
+  const to = params.get("to")
+
+  if (from && to && isIsoDate(from) && isIsoDate(to)) {
+    next.customRange = { from, to }
+  }
+
+  next.topicIds = splitList(params.get("topics"))
+  next.trackedPromptIds = splitList(params.get("prompts"))
+  next.brandEntityIds = splitList(params.get("brands"))
+  next.sourceDomainIds = splitList(params.get("sources"))
+  next.search = params.get("q") ?? ""
+
+  return next
+}
