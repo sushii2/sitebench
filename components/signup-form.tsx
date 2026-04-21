@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 import { createSignupSchema, buildPasswordPolicy, describePasswordPolicy } from "@/lib/auth/validation"
@@ -349,7 +350,7 @@ export function SignupForm({
                   </FieldDescription>
                 ) : null}
                 <FieldDescription className="text-center">
-                  Already have an account? Sign in
+                  Already have an account? <Link href="/login">Sign in</Link>
                 </FieldDescription>
               </Field>
             </FieldGroup>
