@@ -12,6 +12,10 @@ const mockPerplexitySearch = vi.fn((config?: Record<string, unknown>) => ({
   config,
   type: "perplexity_search",
 }))
+const mockAnthropicWebSearch = vi.fn((config?: Record<string, unknown>) => ({
+  config,
+  type: "anthropic_web_search",
+}))
 
 const mockCreateGateway = vi.fn(() =>
   Object.assign(mockGatewayModel, {
@@ -24,6 +28,14 @@ const mockCreateGateway = vi.fn(() =>
 
 vi.mock("ai", () => ({
   createGateway: mockCreateGateway,
+}))
+
+vi.mock("@ai-sdk/anthropic", () => ({
+  anthropic: {
+    tools: {
+      webSearch_20250305: mockAnthropicWebSearch,
+    },
+  },
 }))
 
 vi.mock("@/lib/ai/config", () => ({
@@ -43,6 +55,7 @@ describe("provider registry", () => {
     mockGatewayModel.mockClear()
     mockParallelSearch.mockClear()
     mockPerplexitySearch.mockClear()
+    mockAnthropicWebSearch.mockClear()
   })
 
   it("normalizes provider aliases", async () => {
@@ -78,7 +91,7 @@ describe("provider registry", () => {
     ).toEqual(["anthropic", "openai"])
     expect(
       getProvidersByCapability("webSearch").map((provider) => provider.id)
-    ).toEqual(["openai", "perplexity"])
+    ).toEqual(["anthropic", "openai", "perplexity"])
     expect(getProvidersByCapability("reasoning")).toEqual([])
   })
 
@@ -124,6 +137,22 @@ describe("provider registry", () => {
         },
       ],
       name: "Perplexity",
+    })
+
+    expect(getProviderDisplayInfo("anthropic")).toEqual({
+      id: "anthropic",
+      logo: "https://cdn.simpleicons.org/anthropic",
+      models: [
+        {
+          id: "anthropic/claude-sonnet-4.6",
+          name: "Claude Sonnet 4.6",
+        },
+        {
+          id: "anthropic/claude-haiku-4.5",
+          name: "Claude Haiku 4.5",
+        },
+      ],
+      name: "Anthropic",
     })
 
     expect(getProviderDisplayCatalog({ anthropic: false })).toEqual([
@@ -175,7 +204,9 @@ describe("provider registry", () => {
     expect(getDefaultModel("perplexity", "webSearch")?.id).toBe(
       "perplexity/sonar"
     )
-    expect(getDefaultModel("anthropic", "webSearch")).toBeNull()
+    expect(getDefaultModel("anthropic", "webSearch")?.id).toBe(
+      "anthropic/claude-sonnet-4.6"
+    )
     expect(
       getProviderModels("openai", {
         openai: false,
@@ -256,5 +287,35 @@ describe("provider registry", () => {
       type: "perplexity_search",
     })
     expect(mockPerplexitySearch).toHaveBeenCalledWith()
+  })
+
+  it("builds an Anthropic native web search tool", async () => {
+    const { getAnthropicWebSearchTool } = await loadProviderConfigModule()
+
+    expect(
+      getAnthropicWebSearchTool({
+        maxUses: 5,
+        userLocation: {
+          type: "approximate",
+          country: "US",
+        },
+      })
+    ).toEqual({
+      config: {
+        maxUses: 5,
+        userLocation: {
+          type: "approximate",
+          country: "US",
+        },
+      },
+      type: "anthropic_web_search",
+    })
+    expect(mockAnthropicWebSearch).toHaveBeenCalledWith({
+      maxUses: 5,
+      userLocation: {
+        type: "approximate",
+        country: "US",
+      },
+    })
   })
 })

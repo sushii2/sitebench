@@ -7,6 +7,7 @@ import { ContentGaps } from "@/components/dashboard/home/content-gaps"
 import { DashboardFilters } from "@/components/dashboard/home/dashboard-filters"
 import { KpiCards } from "@/components/dashboard/home/kpi-cards"
 import { PlatformBreakdown } from "@/components/dashboard/home/platform-breakdown"
+import { PromptRunActions } from "@/components/dashboard/prompt-run-actions"
 import { ProviderRankings } from "@/components/dashboard/home/provider-rankings"
 import { RecommendationRate } from "@/components/dashboard/home/recommendation-rate"
 import { SentimentOverview } from "@/components/dashboard/home/sentiment-overview"
@@ -32,6 +33,8 @@ export function DashboardHome() {
   return (
     <div className="flex flex-col gap-4 p-6 pt-2">
       <DashboardFilters />
+
+      <PromptRunActions />
 
       <KpiCards metrics={mockKpis} />
 

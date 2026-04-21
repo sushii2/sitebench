@@ -11,6 +11,18 @@ vi.mock("@/lib/insforge/browser-client", () => ({
   getInsforgeBrowserClient: () => ({}),
 }))
 
+vi.mock("@/lib/prompt-run-configs/client", () => ({
+  fetchPromptRunConfig: vi.fn().mockResolvedValue(null),
+}))
+
+vi.mock("@trigger.dev/react-hooks", () => ({
+  useRealtimeRun: () => ({
+    error: undefined,
+    run: undefined,
+    stop: vi.fn(),
+  }),
+}))
+
 vi.mock("@/lib/logo-dev/config", () => ({
   resolveLogoDevPublicConfig: () => ({ publishableKey: "pk_test" }),
 }))

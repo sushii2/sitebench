@@ -15,6 +15,15 @@ export type InsforgePublicConfig = {
   baseUrl: string
 }
 
+export type InsforgeServiceConfig = {
+  apiKey: string
+  baseUrl: string
+}
+
+const serviceConfigSchema = publicConfigSchema.extend({
+  INSFORGE_API_KEY: z.string().trim().min(1, "INSFORGE_API_KEY is required"),
+})
+
 export function resolveInsforgePublicConfig(
   env?: Record<string, string | undefined>
 ): InsforgePublicConfig {
@@ -27,12 +36,46 @@ export function resolveInsforgePublicConfig(
 
   if (!parsed.success) {
     throw new Error(
-      parsed.error.issues.map((issue) => issue.message).join(". ")
+      parsed.error.issues
+        .map((issue) => {
+          const fieldName = issue.path.join(".") || "unknown"
+
+          return `${fieldName}: ${issue.message}`
+        })
+        .join(". ")
     )
   }
 
   return {
     anonKey: parsed.data.NEXT_PUBLIC_INSFORGE_ANON_KEY,
+    baseUrl: parsed.data.NEXT_PUBLIC_INSFORGE_URL,
+  }
+}
+
+export function resolveInsforgeServiceConfig(
+  env?: Record<string, string | undefined>
+): InsforgeServiceConfig {
+  const source = env ?? {
+    INSFORGE_API_KEY: process.env.INSFORGE_API_KEY,
+    NEXT_PUBLIC_INSFORGE_ANON_KEY: process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY,
+    NEXT_PUBLIC_INSFORGE_URL: process.env.NEXT_PUBLIC_INSFORGE_URL,
+  }
+  const parsed = serviceConfigSchema.safeParse(source)
+
+  if (!parsed.success) {
+    throw new Error(
+      parsed.error.issues
+        .map((issue) => {
+          const fieldName = issue.path.join(".") || "unknown"
+
+          return `${fieldName}: ${issue.message}`
+        })
+        .join(". ")
+    )
+  }
+
+  return {
+    apiKey: parsed.data.INSFORGE_API_KEY,
     baseUrl: parsed.data.NEXT_PUBLIC_INSFORGE_URL,
   }
 }
