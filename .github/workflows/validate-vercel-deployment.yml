@@ -1,0 +1,61 @@
+name: Validate Vercel Deployment
+
+on:
+  deployment_status:
+
+jobs:
+  validate:
+    name: Health-check Vercel deployment
+    if: |
+      github.event.deployment_status.state == 'success' &&
+      (github.event.deployment.ref == 'refs/heads/master' || github.event.deployment.ref == 'master')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+      deployments: read
+      contents: read
+    steps:
+      - name: Resolve deployment URL
+        id: url
+        run: |
+          url="${{ github.event.deployment_status.environment_url }}"
+          if [ -z "$url" ]; then
+            url="${{ github.event.deployment_status.target_url }}"
+          fi
+          if [ -z "$url" ]; then
+            echo "::error::No deployment URL on deployment_status event"
+            exit 1
+          fi
+          echo "deployment_url=$url" >> "$GITHUB_OUTPUT"
+          echo "Validating: $url"
+
+      - name: Homepage returns 200
+        run: |
+          url="${{ steps.url.outputs.deployment_url }}"
+          code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 30 --retry 3 --retry-delay 5 "$url/")
+          echo "GET $url/ -> $code"
+          case "$code" in
+            200) echo "ok" ;;
+            401|403) echo "::warning::Got $code — deployment protection likely enabled; treating as reachable" ;;
+            *) echo "::error::Expected 200, got $code"; exit 1 ;;
+          esac
+
+      - name: Report commit status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const state = '${{ job.status }}' === 'success' ? 'success' : 'failure';
+            const description = state === 'success'
+              ? 'Vercel deployment health check passed'
+              : 'Vercel deployment health check failed';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.deployment.sha,
+              state,
+              context: 'vercel/validate-deployment',
+              description,
+              target_url: '${{ steps.url.outputs.deployment_url }}',
+            });
