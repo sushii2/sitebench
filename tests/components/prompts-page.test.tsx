@@ -34,7 +34,12 @@ vi.mock("@/lib/tracked-prompts/repository", () => ({
   loadTrackedPromptsByProject: vi.fn(),
 }))
 
+vi.mock("@/lib/prompt-metrics/repository", () => ({
+  loadPromptMetrics: vi.fn(),
+}))
+
 import { PromptsPage } from "@/components/dashboard/prompts/prompts-page"
+import { loadPromptMetrics } from "@/lib/prompt-metrics/repository"
 import { loadProjectTopics } from "@/lib/project-topics/repository"
 import { loadTrackedPromptsByProject } from "@/lib/tracked-prompts/repository"
 
@@ -43,10 +48,15 @@ const loadProjectTopicsMock = loadProjectTopics as unknown as ReturnType<
 >
 const loadTrackedPromptsByProjectMock =
   loadTrackedPromptsByProject as unknown as ReturnType<typeof vi.fn>
+const loadPromptMetricsMock = loadPromptMetrics as unknown as ReturnType<
+  typeof vi.fn
+>
 
 beforeEach(() => {
   loadProjectTopicsMock.mockReset()
   loadTrackedPromptsByProjectMock.mockReset()
+  loadPromptMetricsMock.mockReset()
+  loadPromptMetricsMock.mockResolvedValue(new Map())
 })
 
 describe("PromptsPage", () => {

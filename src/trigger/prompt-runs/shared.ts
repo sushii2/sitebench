@@ -101,13 +101,6 @@ export interface AnalyzedResponseBrandMetric {
   visibilityScore: number
 }
 
-export interface DiscoveredCompetitorCandidate {
-  description: string
-  evidenceQuote: string
-  name: string
-  websiteUrl: string
-}
-
 export interface AnalyzedProviderExecutionResult extends ProviderExecutionResult {
   brandMetrics: AnalyzedResponseBrandMetric[]
   responseSummary: string
@@ -128,7 +121,6 @@ export interface AnalyzedRunPayload {
   cadenceDays: PromptRunCadenceDays
   completedAt: string
   configId: string
-  discoveredCompetitors: DiscoveredCompetitorCandidate[]
   projectId: string
   promptRuns: AnalyzedPromptRun[]
   scheduledFor: string

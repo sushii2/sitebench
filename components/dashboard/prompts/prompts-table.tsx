@@ -41,14 +41,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import type { BrandCompetitor } from "@/lib/brands/types"
-import {
-  mockSentiment,
-  mockStatusRanAt,
-  mockTopPerformerCount,
-  mockVisibility,
-  type SentimentTone,
-} from "@/lib/dashboard/prompts-mock"
+import type { PromptMetricSummary } from "@/lib/prompt-metrics/repository"
 import type { ProjectTopic } from "@/lib/project-topics/types"
+import type { SentimentLabel } from "@/lib/response-brand-metrics/types"
 import type { TrackedPrompt } from "@/lib/tracked-prompts/types"
 
 type PromptRow = {
@@ -57,10 +52,10 @@ type PromptRow = {
   topic_id: string
   topic_name: string
   created_at: string
-  visibility: number
+  visibility: number | null
   performerCount: number
-  sentiment: SentimentTone
-  ranAt: Date
+  sentiment: SentimentLabel | null
+  ranAt: Date | null
 }
 
 function formatCreated(value: string) {
@@ -86,12 +81,12 @@ export function PromptsTable({
   topics,
   promptsByTopic,
   competitors,
-  platform,
+  promptMetricsById,
 }: {
   topics: ProjectTopic[]
   promptsByTopic: Map<string, TrackedPrompt[]>
   competitors: BrandCompetitor[]
-  platform: string
+  promptMetricsById: Map<string, PromptMetricSummary>
 }) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = React.useState("")
@@ -104,22 +99,24 @@ export function PromptsTable({
       const topicPrompts = promptsByTopic.get(topic.id) ?? []
 
       for (const prompt of topicPrompts) {
+        const metric = promptMetricsById.get(prompt.id)
+
         next.push({
           id: prompt.id,
           prompt_text: prompt.prompt_text,
           topic_id: topic.id,
           topic_name: topic.name,
           created_at: prompt.created_at,
-          visibility: mockVisibility(prompt.id, platform),
-          performerCount: mockTopPerformerCount(prompt.id),
-          sentiment: mockSentiment(prompt.id, platform),
-          ranAt: mockStatusRanAt(prompt.id),
+          visibility: metric?.visibility ?? null,
+          performerCount: metric?.performerCount ?? 0,
+          sentiment: metric?.sentiment ?? null,
+          ranAt: metric?.ranAt ? new Date(metric.ranAt) : null,
         })
       }
     }
 
     return next
-  }, [platform, promptsByTopic, topics])
+  }, [promptMetricsById, promptsByTopic, topics])
 
   const filteredByTopic = React.useMemo(() => {
     if (topicFilter === "all") {

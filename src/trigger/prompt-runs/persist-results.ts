@@ -2,14 +2,22 @@ import { AbortTaskRunError, logger, task } from "@trigger.dev/sdk"
 
 import { getCitationDomain, getCitationRootDomain } from "@/lib/prompt-runs/analysis"
 import { createInsforgeServiceClient } from "@/lib/insforge/service-client"
-import { normalizeBrandNameKey, normalizeCompanyName, normalizeDescription, normalizeWebsite } from "@/lib/brands"
+import { uploadRawResponseJson } from "@/lib/prompt-runs/raw-response-blob"
 import type { BrandEntity } from "@/lib/brand-entities/types"
 import type { PromptRun } from "@/lib/prompt-runs/types"
 import type { PromptRunResponse } from "@/lib/prompt-run-responses/types"
 import type { ResponseBrandMetric } from "@/lib/response-brand-metrics/types"
 import type { ResponseCitation } from "@/lib/response-citations/types"
 import { PROMPT_RUN_RESPONSE_PARSER_VERSION } from "@/src/trigger/prompt-runs/shared"
-import type { AnalyzedRunPayload } from "@/src/trigger/prompt-runs/shared"
+import type {
+  AnalyzedRunPayload,
+  AnalyzedProviderExecutionResult,
+} from "@/src/trigger/prompt-runs/shared"
+
+const SOURCE_DOMAINS_LOOKUP_CHUNK_SIZE = 50
+const SOURCE_PAGES_LOOKUP_CHUNK_SIZE = 20
+const SOURCE_PAGES_CHUNK_SIZE = 20
+const PROMPT_RUN_RESPONSES_CHUNK_SIZE = 10
 
 function takeRows<T>(value: T | T[] | null | undefined) {
   if (Array.isArray(value)) {
@@ -17,6 +25,24 @@ function takeRows<T>(value: T | T[] | null | undefined) {
   }
 
   return value ? [value] : []
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  if (size <= 0) {
+    return [items]
+  }
+
+  const chunks: T[][] = []
+
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size))
+  }
+
+  return chunks
+}
+
+function estimateBodyBytes(rows: unknown[]): number {
+  return Buffer.byteLength(JSON.stringify(rows), "utf8")
 }
 
 async function loadBrands(projectId: string) {
@@ -34,59 +60,6 @@ async function loadBrands(projectId: string) {
   return takeRows(response.data as BrandEntity[] | BrandEntity | null)
 }
 
-async function ensureDiscoveredCompetitors(
-  payload: AnalyzedRunPayload
-): Promise<BrandEntity[]> {
-  const client = createInsforgeServiceClient()
-  const brands = await loadBrands(payload.projectId)
-  let nextSortOrder =
-    brands.reduce((maxSortOrder, brand) => Math.max(maxSortOrder, brand.sort_order), -1) +
-    1
-
-  for (const candidate of payload.discoveredCompetitors) {
-    const normalizedName = normalizeBrandNameKey(candidate.name)
-    const websiteUrl = normalizeWebsite(candidate.websiteUrl)
-    const websiteHost = new URL(websiteUrl).hostname.replace(/^www\./i, "")
-    const existing = brands.find(
-      (brand) =>
-        brand.normalized_name === normalizedName ||
-        brand.website_host === websiteHost
-    )
-
-    if (existing) {
-      continue
-    }
-
-    const response = await client.database
-      .from("brand_entities")
-      .insert([
-        {
-          created_by: "ai_discovered",
-          description: normalizeDescription(candidate.description),
-          is_active: true,
-          name: normalizeCompanyName(candidate.name),
-          normalized_name: normalizedName,
-          project_id: payload.projectId,
-          role: "competitor",
-          sort_order: nextSortOrder,
-          website_host: websiteHost,
-          website_url: websiteUrl,
-        },
-      ])
-      .select("*")
-      .maybeSingle()
-
-    if (!response || response.error || !response.data) {
-      throw response?.error ?? new Error("Unable to insert discovered competitor.")
-    }
-
-    brands.push(response.data as BrandEntity)
-    nextSortOrder += 1
-  }
-
-  return brands
-}
-
 async function ensureSourceDomains(urls: string[]) {
   const client = createInsforgeServiceClient()
   const domains = [
@@ -101,21 +74,32 @@ async function ensureSourceDomains(urls: string[]) {
     return new Map<string, string>()
   }
 
-  const existingResponse = await client.database
-    .from("source_domains")
-    .select("*")
-    .in("domain", domains)
+  const existingByDomain = new Map<string, string>()
+  const domainLookupChunks = chunk(domains, SOURCE_DOMAINS_LOOKUP_CHUNK_SIZE)
 
-  if (!existingResponse || existingResponse.error) {
-    throw existingResponse?.error ?? new Error("Unable to load source domains.")
+  for (const [index, batch] of domainLookupChunks.entries()) {
+    logger.info("[prompt-runs] source_domains lookup chunk", {
+      batchIndex: index,
+      batchSize: batch.length,
+      chunkCount: domainLookupChunks.length,
+    })
+
+    const existingResponse = await client.database
+      .from("source_domains")
+      .select("*")
+      .in("domain", batch)
+
+    if (!existingResponse || existingResponse.error) {
+      throw existingResponse?.error ?? new Error("Unable to load source domains.")
+    }
+
+    for (const row of takeRows(
+      existingResponse.data as Array<{ domain: string; id: string }>
+    )) {
+      existingByDomain.set(row.domain, row.id)
+    }
   }
 
-  const existingDomains = takeRows(
-    existingResponse.data as Array<{ domain: string; id: string }>
-  )
-  const existingByDomain = new Map(
-    existingDomains.map((domain) => [domain.domain, domain.id])
-  )
   const missingDomains = domains.filter((domain) => !existingByDomain.has(domain))
 
   if (missingDomains.length > 0) {
@@ -151,55 +135,126 @@ async function ensureSourcePages(urls: string[], domainIdsByDomain: Map<string, 
     return new Map<string, string>()
   }
 
-  const existingResponse = await client.database
-    .from("source_pages")
-    .select("*")
-    .in("canonical_url", urls)
+  const pagesByUrl = new Map<string, string>()
+  const pageLookupChunks = chunk(urls, SOURCE_PAGES_LOOKUP_CHUNK_SIZE)
 
-  if (!existingResponse || existingResponse.error) {
-    throw existingResponse?.error ?? new Error("Unable to load source pages.")
-  }
+  for (const [index, batch] of pageLookupChunks.entries()) {
+    logger.info("[prompt-runs] source_pages lookup chunk", {
+      batchIndex: index,
+      batchSize: batch.length,
+      chunkCount: pageLookupChunks.length,
+      estimatedQueryChars: batch.reduce(
+        (total, url) => total + encodeURIComponent(url).length,
+        0
+      ),
+    })
 
-  const existingPages = takeRows(
-    existingResponse.data as Array<{ canonical_url: string; id: string }>
-  )
-  const pagesByUrl = new Map(
-    existingPages.map((page) => [page.canonical_url, page.id])
-  )
-  const missingUrls = urls.filter((url) => !pagesByUrl.has(url))
-
-  if (missingUrls.length > 0) {
-    const insertResponse = await client.database
+    const existingResponse = await client.database
       .from("source_pages")
-      .insert(
-        missingUrls.map((url) => {
-          const domain = getCitationDomain(url)
-
-          if (!domain) {
-            throw new AbortTaskRunError(`Unable to derive citation domain for ${url}.`)
-          }
-
-          return {
-            canonical_url: url,
-            domain_id: domainIdsByDomain.get(domain),
-            page_title: null,
-          }
-        })
-      )
       .select("*")
+      .in("canonical_url", batch)
 
-    if (!insertResponse || insertResponse.error) {
-      throw insertResponse?.error ?? new Error("Unable to insert source pages.")
+    if (!existingResponse || existingResponse.error) {
+      throw existingResponse?.error ?? new Error("Unable to load source pages.")
     }
 
     for (const row of takeRows(
-      insertResponse.data as Array<{ canonical_url: string; id: string }>
+      existingResponse.data as Array<{ canonical_url: string; id: string }>
     )) {
       pagesByUrl.set(row.canonical_url, row.id)
     }
   }
 
+  const missingUrls = urls.filter((url) => !pagesByUrl.has(url))
+
+  if (missingUrls.length > 0) {
+    const rows = missingUrls.map((url) => {
+      const domain = getCitationDomain(url)
+
+      if (!domain) {
+        throw new AbortTaskRunError(`Unable to derive citation domain for ${url}.`)
+      }
+
+      return {
+        canonical_url: url,
+        domain_id: domainIdsByDomain.get(domain),
+        page_title: null,
+      }
+    })
+
+    const chunks = chunk(rows, SOURCE_PAGES_CHUNK_SIZE)
+
+    for (const [index, batch] of chunks.entries()) {
+      logger.info("[prompt-runs] source_pages insert chunk", {
+        batchIndex: index,
+        batchSize: batch.length,
+        chunkCount: chunks.length,
+        estimatedBodyBytes: estimateBodyBytes(batch),
+        sampleUrl: batch[0]?.canonical_url ?? null,
+      })
+
+      const insertResponse = await client.database
+        .from("source_pages")
+        .insert(batch)
+        .select("*")
+
+      if (!insertResponse || insertResponse.error) {
+        throw insertResponse?.error ?? new Error("Unable to insert source pages.")
+      }
+
+      for (const row of takeRows(
+        insertResponse.data as Array<{ canonical_url: string; id: string }>
+      )) {
+        pagesByUrl.set(row.canonical_url, row.id)
+      }
+    }
+  }
+
   return pagesByUrl
+}
+
+async function uploadRawResponseJsonsToBlob(
+  payload: AnalyzedRunPayload
+): Promise<Map<string, string>> {
+  const pending: Array<{
+    key: string
+    providerResult: AnalyzedProviderExecutionResult
+    trackedPromptId: string
+  }> = []
+
+  for (const promptRun of payload.promptRuns) {
+    for (const providerResult of promptRun.providerResults) {
+      if (!providerResult.rawResponseJson) {
+        continue
+      }
+
+      pending.push({
+        key: `${promptRun.trackedPromptId}:${providerResult.providerId}`,
+        providerResult,
+        trackedPromptId: promptRun.trackedPromptId,
+      })
+    }
+  }
+
+  if (pending.length === 0) {
+    return new Map()
+  }
+
+  const uploaded = await Promise.all(
+    pending.map(async ({ key, providerResult, trackedPromptId }) => {
+      const url = await uploadRawResponseJson({
+        platformCode: providerResult.providerId,
+        projectId: payload.projectId,
+        rawResponseJson: providerResult.rawResponseJson ?? {},
+        scheduledFor: payload.scheduledFor,
+        trackedPromptId,
+      })
+
+      return [key, url] as const
+    })
+  )
+
+  return new Map(uploaded)
 }
 
 export const persistResults = task({
@@ -214,13 +269,12 @@ export const persistResults = task({
   },
   run: async (payload: AnalyzedRunPayload) => {
     logger.info("[prompt-runs] Persist started", {
-      discoveredCompetitorCount: payload.discoveredCompetitors.length,
       projectId: payload.projectId,
       promptRunCount: payload.promptRuns.length,
     })
 
     const client = createInsforgeServiceClient()
-    const brands = await ensureDiscoveredCompetitors(payload)
+    const brands = await loadBrands(payload.projectId)
     const brandById = new Map(brands.map((brand) => [brand.id, brand]))
     const promptRunResponseRows = payload.promptRuns.flatMap((promptRun) =>
       promptRun.providerResults
@@ -234,6 +288,11 @@ export const persistResults = task({
     ]
     const domainIdsByDomain = await ensureSourceDomains(citationUrls)
     const pageIdsByUrl = await ensureSourcePages(citationUrls, domainIdsByDomain)
+    const rawResponseJsonUrlByKey = await uploadRawResponseJsonsToBlob(payload)
+
+    logger.info("[prompt-runs] Uploaded raw response JSON blobs", {
+      uploadedCount: rawResponseJsonUrlByKey.size,
+    })
 
     const promptRunsInsertResponse = await client.database
       .from("prompt_runs")
@@ -264,41 +323,62 @@ export const persistResults = task({
       promptRuns.map((promptRun) => [promptRun.tracked_prompt_id, promptRun.id])
     )
 
-    const promptRunResponsesInsertResponse = await client.database
-      .from("prompt_run_responses")
-      .insert(
-        payload.promptRuns.flatMap((promptRun) =>
-          promptRun.providerResults.map((response) => ({
-            error_code: response.errorCode,
-            error_message: response.errorMessage,
-            input_tokens: response.inputTokens,
-            latency_ms: response.latencyMs,
-            output_tokens: response.outputTokens,
-            parser_version: PROMPT_RUN_RESPONSE_PARSER_VERSION,
-            platform_code: response.providerId,
-            project_id: payload.projectId,
-            prompt_run_id: promptRunIdByTrackedPromptId.get(promptRun.trackedPromptId),
-            prompt_text: response.promptText,
-            provider_model: response.providerModel,
-            raw_response_json: response.rawResponseJson,
-            raw_response_text: response.rawResponseText,
-            responded_at: response.respondedAt,
-            status: response.status,
-          }))
-        )
-      )
-      .select("*")
-
-    if (!promptRunResponsesInsertResponse || promptRunResponsesInsertResponse.error) {
-      throw (
-        promptRunResponsesInsertResponse?.error ??
-        new Error("Unable to insert prompt run responses.")
-      )
-    }
-
-    const promptRunResponses = takeRows(
-      promptRunResponsesInsertResponse.data as PromptRunResponse[] | PromptRunResponse | null
+    const promptRunResponseInsertRows = payload.promptRuns.flatMap((promptRun) =>
+      promptRun.providerResults.map((response) => ({
+        error_code: response.errorCode,
+        error_message: response.errorMessage,
+        input_tokens: response.inputTokens,
+        latency_ms: response.latencyMs,
+        output_tokens: response.outputTokens,
+        parser_version: PROMPT_RUN_RESPONSE_PARSER_VERSION,
+        platform_code: response.providerId,
+        project_id: payload.projectId,
+        prompt_run_id: promptRunIdByTrackedPromptId.get(promptRun.trackedPromptId),
+        prompt_text: response.promptText,
+        provider_model: response.providerModel,
+        raw_response_json: null,
+        raw_response_json_url:
+          rawResponseJsonUrlByKey.get(
+            `${promptRun.trackedPromptId}:${response.providerId}`
+          ) ?? null,
+        raw_response_text: response.rawResponseText,
+        responded_at: response.respondedAt,
+        status: response.status,
+      }))
     )
+
+    const promptRunResponseChunks = chunk(
+      promptRunResponseInsertRows,
+      PROMPT_RUN_RESPONSES_CHUNK_SIZE
+    )
+    const promptRunResponses: PromptRunResponse[] = []
+
+    for (const [index, batch] of promptRunResponseChunks.entries()) {
+      logger.info("[prompt-runs] prompt_run_responses insert chunk", {
+        batchIndex: index,
+        batchSize: batch.length,
+        chunkCount: promptRunResponseChunks.length,
+        estimatedBodyBytes: estimateBodyBytes(batch),
+      })
+
+      const promptRunResponsesInsertResponse = await client.database
+        .from("prompt_run_responses")
+        .insert(batch)
+        .select("*")
+
+      if (!promptRunResponsesInsertResponse || promptRunResponsesInsertResponse.error) {
+        throw (
+          promptRunResponsesInsertResponse?.error ??
+          new Error("Unable to insert prompt run responses.")
+        )
+      }
+
+      for (const row of takeRows(
+        promptRunResponsesInsertResponse.data as PromptRunResponse[] | PromptRunResponse | null
+      )) {
+        promptRunResponses.push(row)
+      }
+    }
     const responseIdByProviderKey = new Map(
       promptRunResponses.map((response) => {
         const promptRun = promptRuns.find(
@@ -460,7 +540,6 @@ export const persistResults = task({
     })
 
     return {
-      discoveredCompetitorCount: payload.discoveredCompetitors.length,
       promptRunCount: promptRuns.length,
       responseCount: promptRunResponses.length,
     }

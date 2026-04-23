@@ -22,7 +22,7 @@ export function TopPerformersCell({
   competitors: BrandCompetitor[]
   count: number
 }) {
-  if (competitors.length === 0) {
+  if (competitors.length === 0 || count <= 0) {
     return <span className="text-xs text-muted-foreground">--</span>
   }
 
@@ -34,7 +34,7 @@ export function TopPerformersCell({
     publishableKey = null
   }
 
-  const visible = competitors.slice(0, MAX_VISIBLE)
+  const visible = competitors.slice(0, Math.min(count, MAX_VISIBLE))
   const overflow = Math.max(0, count - visible.length)
 
   return (
