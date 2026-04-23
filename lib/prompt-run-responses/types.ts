@@ -14,6 +14,7 @@ export interface PromptRunResponse {
   prompt_text: string
   raw_response_text: string | null
   raw_response_json: Record<string, unknown> | null
+  raw_response_json_url: string | null
   parser_version: string
   status: PromptRunResponseStatus
   latency_ms: number | null

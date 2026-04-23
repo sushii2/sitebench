@@ -12,7 +12,11 @@ function getColorClass(percent: number) {
   return "bg-rose-500"
 }
 
-export function VisibilityCell({ percent }: { percent: number }) {
+export function VisibilityCell({ percent }: { percent: number | null }) {
+  if (percent === null) {
+    return <span className="text-xs text-muted-foreground">--</span>
+  }
+
   const clamped = Math.max(0, Math.min(100, percent))
 
   return (

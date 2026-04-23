@@ -29,11 +29,13 @@ function makeCitation(
   id: string,
   domainValue: string
 ): {
+  attributedBrandIds: string[]
   citation: ResponseCitation
   page: SourcePage
   domain: SourceDomain
 } {
   return {
+    attributedBrandIds: [],
     citation: {
       authority_score: null,
       cited_url: `https://${domainValue}/post`,

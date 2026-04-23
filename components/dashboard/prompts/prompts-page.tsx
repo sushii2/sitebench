@@ -10,6 +10,10 @@ import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { PromptPlatformId } from "@/lib/dashboard/prompt-platforms"
 import { getInsforgeBrowserClient } from "@/lib/insforge/browser-client"
+import {
+  loadPromptMetrics,
+  type PromptMetricSummary,
+} from "@/lib/prompt-metrics/repository"
 import { loadProjectTopics } from "@/lib/project-topics/repository"
 import type { ProjectTopic } from "@/lib/project-topics/types"
 import { loadTrackedPromptsByProject } from "@/lib/tracked-prompts/repository"
@@ -22,6 +26,9 @@ export function PromptsPage() {
   const projectId = brand?.id ?? null
   const [topics, setTopics] = React.useState<ProjectTopic[]>([])
   const [prompts, setPrompts] = React.useState<TrackedPrompt[]>([])
+  const [promptMetricsById, setPromptMetricsById] = React.useState<
+    Map<string, PromptMetricSummary>
+  >(new Map())
   const [isLoading, setIsLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [platform, setPlatform] = React.useState<PromptPlatformId>("chatgpt")
@@ -47,6 +54,11 @@ export function PromptsPage() {
           loadProjectTopics(client, currentProjectId),
           loadTrackedPromptsByProject(client, currentProjectId),
         ])
+        const activePrompts = loadedPrompts.filter((prompt) => prompt.is_active)
+        const metrics = await loadPromptMetrics(client, {
+          platformCode: platform,
+          projectId: currentProjectId,
+        })
 
         if (cancelled) {
           return
@@ -57,7 +69,8 @@ export function PromptsPage() {
             .filter((topic) => topic.is_active)
             .sort((a, b) => a.sort_order - b.sort_order)
         )
-        setPrompts(loadedPrompts.filter((prompt) => prompt.is_active))
+        setPrompts(activePrompts)
+        setPromptMetricsById(metrics)
       } catch (caught) {
         if (cancelled) {
           return
@@ -78,7 +91,7 @@ export function PromptsPage() {
     return () => {
       cancelled = true
     }
-  }, [projectId])
+  }, [platform, projectId])
 
   const promptsByTopic = React.useMemo(() => {
     const map = new Map<string, TrackedPrompt[]>()
@@ -121,7 +134,7 @@ export function PromptsPage() {
           topics={topics}
           promptsByTopic={promptsByTopic}
           competitors={competitors}
-          platform={platform}
+          promptMetricsById={promptMetricsById}
         />
       ) : (
         <Card className="p-8 text-center">

@@ -13,6 +13,13 @@ export interface ChatFilters {
   search: string
 }
 
+interface NormalizeChatFiltersInput {
+  topics?: Array<{ id: string }>
+  prompts?: Array<{ id: string; project_topic_id: string }>
+  brands?: Array<{ id: string }>
+  domains?: Array<{ id: string }>
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000
 
 export function emptyFilters(): ChatFilters {
@@ -45,6 +52,10 @@ function toDay(dateString: string): string {
   return dateString.slice(0, 10)
 }
 
+function toUtcDayStart(value: string): number {
+  return Date.parse(`${value}T00:00:00.000Z`)
+}
+
 function isWithinTimeframe(
   scheduledFor: string,
   timeframe: ChatTimeframe,
@@ -62,10 +73,10 @@ function isWithinTimeframe(
       return true
     }
 
-    const from = Date.parse(customRange.from)
-    const to = Date.parse(customRange.to)
+    const from = toUtcDayStart(customRange.from)
+    const to = toUtcDayStart(customRange.to) + DAY_MS
 
-    return ts >= from && ts <= to
+    return ts >= from && ts < to
   }
 
   const windowDays =
@@ -192,6 +203,19 @@ function splitList(value: string | null): string[] {
     .filter((part) => part.length > 0)
 }
 
+function filterKnownIds(
+  values: string[],
+  allowed: Array<{ id: string }> | undefined
+): string[] {
+  if (!allowed) {
+    return [...values]
+  }
+
+  const allowedIds = new Set(allowed.map((item) => item.id))
+
+  return values.filter((value) => allowedIds.has(value))
+}
+
 export function filtersFromQueryString(params: URLSearchParams): ChatFilters {
   const next = emptyFilters()
 
@@ -221,4 +245,37 @@ export function filtersFromQueryString(params: URLSearchParams): ChatFilters {
   next.search = params.get("q") ?? ""
 
   return next
+}
+
+export function normalizeChatFilters(
+  filters: ChatFilters,
+  input: NormalizeChatFiltersInput
+): ChatFilters {
+  const topicIds = filterKnownIds(filters.topicIds, input.topics)
+  const prompts = input.prompts
+  const allowedPromptIds =
+    prompts
+      ? prompts.filter((prompt) =>
+          topicIds.length === 0 ? true : topicIds.includes(prompt.project_topic_id)
+        )
+      : undefined
+  const trackedPromptIds = filterKnownIds(
+    filters.trackedPromptIds,
+    allowedPromptIds?.map((prompt) => ({ id: prompt.id }))
+  )
+  const pipelineRunDate = filters.pipelineRunDate
+  const timeframe = pipelineRunDate ? null : filters.timeframe
+  const customRange =
+    pipelineRunDate || timeframe !== "custom" ? null : filters.customRange
+
+  return {
+    brandEntityIds: filterKnownIds(filters.brandEntityIds, input.brands),
+    customRange,
+    pipelineRunDate,
+    search: filters.search,
+    sourceDomainIds: filterKnownIds(filters.sourceDomainIds, input.domains),
+    timeframe,
+    topicIds,
+    trackedPromptIds,
+  }
 }

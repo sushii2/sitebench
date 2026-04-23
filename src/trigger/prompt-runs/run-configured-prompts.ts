@@ -305,7 +305,6 @@ export const runConfiguredPrompts = task({
 
       return {
         configId: config.id,
-        discoveredCompetitorCount: persistResult.output.discoveredCompetitorCount,
         projectId: payload.projectId,
         responseCount: persistResult.output.responseCount,
         runId: ctx.run.id,

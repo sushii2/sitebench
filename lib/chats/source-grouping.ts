@@ -6,6 +6,7 @@ import type { SourcePage } from "@/lib/source-pages/types"
 import type { ChatSource, ChatSourceGroup } from "@/lib/chats/types"
 
 interface RawSource {
+  attributedBrandIds: string[]
   citation: ResponseCitation
   page: SourcePage
   domain: SourceDomain
@@ -48,6 +49,21 @@ function matchBrand(
   return null
 }
 
+function matchAttributedBrand(
+  attributedBrandIds: string[],
+  brands: BrandEntity[]
+): BrandEntity | null {
+  const brandIds = new Set(attributedBrandIds)
+
+  for (const brand of brandsByPriority(brands)) {
+    if (brandIds.has(brand.id)) {
+      return brand
+    }
+  }
+
+  return null
+}
+
 export function groupSources(
   sources: RawSource[],
   brands: BrandEntity[]
@@ -57,7 +73,9 @@ export function groupSources(
 
   for (const source of sources) {
     const host = normalizeHost(source.domain.domain)
-    const matchedBrand = matchBrand(host, brands)
+    const matchedBrand =
+      matchAttributedBrand(source.attributedBrandIds, brands) ??
+      matchBrand(host, brands)
 
     const entry: ChatSource = {
       citation: source.citation,

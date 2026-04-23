@@ -26,13 +26,6 @@ export const promptRunAnalysisBrandMetricSchema = z.object({
   visibilityScore: z.number().min(0).max(100),
 })
 
-export const promptRunDiscoveredCompetitorSchema = z.object({
-  description: z.string().default(""),
-  evidenceQuote: z.string().trim().min(1),
-  name: z.string().trim().min(1),
-  websiteUrl: z.string().url(),
-})
-
 export const promptRunAnalysisResponseSchema = z.object({
   brandMetrics: z.array(promptRunAnalysisBrandMetricSchema).default([]),
   providerId: providerIdSchema,
@@ -41,9 +34,6 @@ export const promptRunAnalysisResponseSchema = z.object({
 })
 
 export const promptRunAnalysisOutputSchema = z.object({
-  discoveredCompetitors: z
-    .array(promptRunDiscoveredCompetitorSchema)
-    .default([]),
   responses: z.array(promptRunAnalysisResponseSchema).default([]),
 })
 

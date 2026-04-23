@@ -5,8 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 
 import { useAuth } from "@/components/auth-provider"
 import { ChatsFilterBar } from "@/components/dashboard/chats/chats-filter-bar"
-import { ChatsList } from "@/components/dashboard/chats/chats-list"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { ChatsTable } from "@/components/dashboard/chats/chats-table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { loadActiveAiPlatforms } from "@/lib/ai-platforms/repository"
 import { loadBrandEntitiesByProject } from "@/lib/brand-entities/repository"
@@ -15,6 +14,7 @@ import {
   applyFilters,
   filtersFromQueryString,
   filtersToQueryString,
+  normalizeChatFilters,
   type ChatFilters,
 } from "@/lib/chats/filters"
 import {
@@ -53,6 +53,16 @@ export function ChatsPage() {
   const [brands, setBrands] = React.useState<BrandEntity[]>([])
   const [domains, setDomains] = React.useState<SourceDomain[]>([])
   const [batches, setBatches] = React.useState<PipelineRunBatch[]>([])
+  const effectiveFilters = React.useMemo(
+    () =>
+      normalizeChatFilters(filters, {
+        brands,
+        domains,
+        prompts,
+        topics,
+      }),
+    [brands, domains, filters, prompts, topics]
+  )
 
   React.useEffect(() => {
     if (!projectId) {
@@ -82,9 +92,15 @@ export function ChatsPage() {
           listProjectSourceDomains(client, currentProjectId),
           listPipelineRunBatches(client, currentProjectId),
         ])
+        const normalizedFilters = normalizeChatFilters(filters, {
+          brands: loadedBrands,
+          domains: loadedDomains,
+          prompts: loadedPrompts,
+          topics: loadedTopics,
+        })
 
         const loadedChats = await listChats(client, {
-          filters,
+          filters: normalizedFilters,
           platforms: platformList,
           projectId: currentProjectId,
         })
@@ -99,6 +115,13 @@ export function ChatsPage() {
         setDomains(loadedDomains)
         setBatches(loadedBatches)
         setChats(loadedChats)
+
+        const nextQs = filtersToQueryString(normalizedFilters)
+        const currentQs = searchParams.toString()
+
+        if (nextQs !== currentQs) {
+          router.replace(nextQs ? `${pathname}?${nextQs}` : pathname)
+        }
       } catch (caught) {
         if (cancelled) {
           return
@@ -119,11 +142,11 @@ export function ChatsPage() {
     return () => {
       cancelled = true
     }
-  }, [projectId, filters])
+  }, [filters, pathname, projectId, router, searchParams])
 
   const filteredChats = React.useMemo(
-    () => applyFilters(chats, filters),
-    [chats, filters]
+    () => applyFilters(chats, effectiveFilters),
+    [chats, effectiveFilters]
   )
 
   function setFilters(next: ChatFilters) {
@@ -141,37 +164,43 @@ export function ChatsPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col p-4 pt-0">
-      <Card className="min-h-[calc(100svh-6rem)]">
-        <CardHeader>
+    <div className="flex flex-1 flex-col gap-5 p-6 pt-2">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
           <h1 className="text-2xl font-semibold tracking-tight">Chats</h1>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <ChatsFilterBar
-            batches={batches}
-            brands={brands}
-            domains={domains}
-            filters={filters}
-            onChange={setFilters}
-            prompts={prompts}
-            topics={topics}
-          />
+          <p className="mt-1 text-sm text-muted-foreground">
+            Every prompt run across your tracked topics and platforms.
+          </p>
+        </div>
+        <div className="text-xs text-muted-foreground tabular-nums">
+          {filteredChats.length} result{filteredChats.length === 1 ? "" : "s"}
+        </div>
+      </div>
 
-          {error ? (
-            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
-              {error}
-            </div>
-          ) : isLoading ? (
-            <div className="flex flex-col gap-3">
-              <Skeleton className="h-24 w-full" />
-              <Skeleton className="h-24 w-full" />
-              <Skeleton className="h-24 w-full" />
-            </div>
-          ) : (
-            <ChatsList chats={filteredChats} hrefForChat={hrefForChat} />
-          )}
-        </CardContent>
-      </Card>
+      <ChatsFilterBar
+        batches={batches}
+        brands={brands}
+        domains={domains}
+        filters={effectiveFilters}
+        onChange={setFilters}
+        prompts={prompts}
+        topics={topics}
+      />
+
+      {error ? (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
+        </div>
+      ) : isLoading ? (
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      ) : (
+        <ChatsTable chats={filteredChats} hrefForChat={hrefForChat} />
+      )}
     </div>
   )
 }

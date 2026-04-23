@@ -14,6 +14,7 @@ import type { ResponseCitation } from "@/lib/response-citations/types"
 import type { SourceDomain } from "@/lib/source-domains/types"
 import type { SourcePage } from "@/lib/source-pages/types"
 import type { TrackedPrompt } from "@/lib/tracked-prompts/types"
+import type { SentimentLabel } from "@/lib/response-brand-metrics/types"
 
 export type PlatformSummaryStatus = PromptRunResponseStatus | "missing"
 
@@ -28,6 +29,7 @@ export interface ChatBrandMentionSummary {
   brandEntityId: string
   name: string
   role: BrandRole
+  websiteHost: string | null
 }
 
 export interface ChatSummary {
@@ -73,7 +75,14 @@ export interface ChatDetail {
   promptRun: PromptRun
   topic: ProjectTopic
   trackedPrompt: TrackedPrompt
+  chatSentiment: ChatSentimentSummary | null
   responses: ChatResponseView[]
+}
+
+export interface ChatSentimentSummary {
+  label: SentimentLabel
+  score: number
+  sampleSize: number
 }
 
 export interface PipelineRunBatch {

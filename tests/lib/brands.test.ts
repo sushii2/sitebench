@@ -567,7 +567,7 @@ describe("brand helpers", () => {
     })
   })
 
-  it("replaces project topics on step 3", async () => {
+  it("preserves existing project topics on step 3 instead of deleting them", async () => {
     const client = makeClient({
       brandEntityResult: {
         data: [makeBrandEntity()],
@@ -579,7 +579,13 @@ describe("brand helpers", () => {
         error: null,
       },
       topicResult: {
-        data: [],
+        data: [
+          makeTopic({
+            id: "topic-1",
+            name: "ai search",
+            normalized_name: "ai search",
+          }),
+        ],
         error: null,
       },
     })
@@ -587,7 +593,47 @@ describe("brand helpers", () => {
     client.topicBuilder.then = vi
       .fn()
       .mockImplementationOnce((resolve) =>
-        Promise.resolve(resolve({ data: [], error: null }))
+        Promise.resolve(
+          resolve({
+            data: [
+              makeTopic({
+                id: "topic-1",
+                name: "ai search",
+                normalized_name: "ai search",
+              }),
+            ],
+            error: null,
+          })
+        )
+      )
+      .mockImplementationOnce((resolve) =>
+        Promise.resolve(
+          resolve({
+            data: [
+              makeTopic({
+                id: "topic-1",
+                name: "ai search",
+                normalized_name: "ai search",
+              }),
+            ],
+            error: null,
+          })
+        )
+      )
+      .mockImplementationOnce((resolve) =>
+        Promise.resolve(
+          resolve({
+            data: [
+              makeTopic({
+                id: "topic-2",
+                name: "perplexity",
+                normalized_name: "perplexity",
+                sort_order: 1,
+              }),
+            ],
+            error: null,
+          })
+        )
       )
       .mockImplementationOnce((resolve) =>
         Promise.resolve(
@@ -614,15 +660,14 @@ describe("brand helpers", () => {
       topics: [" AI Search ", "perplexity"],
     })
 
-    expect(client.topicBuilder.delete).toHaveBeenCalledTimes(1)
+    expect(client.topicBuilder.delete).not.toHaveBeenCalled()
+    expect(client.topicBuilder.update).toHaveBeenCalledWith({
+      default_cadence: "weekly",
+      is_active: true,
+      sort_order: 0,
+      source: "user_added",
+    })
     expect(client.topicBuilder.insert).toHaveBeenCalledWith([
-      expect.objectContaining({
-        default_cadence: "weekly",
-        name: "ai search",
-        normalized_name: "ai search",
-        project_id: "project-1",
-        sort_order: 0,
-      }),
       expect.objectContaining({
         default_cadence: "weekly",
         name: "perplexity",

@@ -77,8 +77,19 @@ export function Footer() {
 				</nav>
 			</div>
 
-			<div className="flex items-center justify-between gap-4 border-t py-4 text-muted-foreground text-sm">
+			<div className="flex flex-col items-start justify-between gap-2 border-t py-4 text-muted-foreground text-sm md:flex-row md:items-center md:gap-4">
 				<p>&copy; {new Date().getFullYear()} Sitebench, Inc.</p>
+				<p>
+					Logos provided by{" "}
+					<a
+						className="underline-offset-4 transition-colors hover:text-foreground hover:underline"
+						href="https://logo.dev"
+						rel="noreferrer"
+						target="_blank"
+					>
+						Logo.dev
+					</a>
+				</p>
 				<p className="font-mono text-[10px] tracking-[0.18em] uppercase">
 					Built for the answer layer
 				</p>

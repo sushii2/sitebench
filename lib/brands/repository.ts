@@ -4,12 +4,12 @@ import {
   getWebsiteHost,
   normalizeBrandDraftStep,
   normalizeBrandNameKey,
-  normalizeBrandTopics,
   normalizeCompanyName,
   normalizeCompetitors,
   normalizeDescription,
   normalizeWebsite,
 } from "@/lib/brands/normalizers"
+import { syncProjectTopics } from "@/lib/project-topics/repository"
 import type {
   Brand,
   BrandCompetitor,
@@ -19,7 +19,6 @@ import type {
   BrandWithCompetitors,
   ProjectProfile,
   ProjectTopic,
-  TopicCadence,
   TrackingProject,
 } from "@/lib/brands/types"
 
@@ -242,43 +241,6 @@ async function updateBrandEntity(
   return brandEntity
 }
 
-async function replaceProjectTopics(
-  client: BrandClient,
-  projectId: string,
-  topics: string[],
-  defaultCadence: TopicCadence = "weekly"
-) {
-  await client.database.from("project_topics").delete().eq("project_id", projectId)
-
-  const normalizedTopics = normalizeBrandTopics(topics)
-
-  if (!normalizedTopics.length) {
-    return []
-  }
-
-  const response = await client.database
-    .from("project_topics")
-    .insert(
-      normalizedTopics.map((topic, index) => ({
-        default_cadence: defaultCadence,
-        is_active: true,
-        name: topic,
-        normalized_name: topic,
-        project_id: projectId,
-        sort_order: index,
-        source: "user_added",
-        topic_catalog_id: null,
-      }))
-    )
-    .select("*")
-
-  if (!response || response.error || !response.data) {
-    throw response?.error ?? new Error("Unable to update project topics.")
-  }
-
-  return takeRows(response.data as ProjectTopic[] | ProjectTopic | null)
-}
-
 export async function loadCurrentUserProjectProfile(
   client: BrandClient
 ): Promise<ProjectProfile | null> {
@@ -386,7 +348,14 @@ export async function saveBrandDraftStep(
   }
 
   if (Array.isArray(patch.topics)) {
-    nextTopics = await replaceProjectTopics(client, project.id, patch.topics)
+    nextTopics = await syncProjectTopics(client, {
+      defaultCadence: "weekly",
+      projectId: project.id,
+      topics: patch.topics.map((topic) => ({
+        source: "user_added",
+        topicName: topic,
+      })),
+    })
   }
 
   if (!nextTopics) {

@@ -13,7 +13,6 @@ import type {
   AnalyzeResponsesPayload,
   AnalyzedProviderExecutionResult,
   AnalyzedRunPayload,
-  DiscoveredCompetitorCandidate,
   ProviderExecutionResult,
 } from "@/src/trigger/prompt-runs/shared"
 import {
@@ -129,25 +128,6 @@ function mergeMetrics(input: {
   return [...metricsByBrand.values()]
 }
 
-function dedupeDiscoveredCompetitors(
-  candidates: DiscoveredCompetitorCandidate[]
-) {
-  const seen = new Set<string>()
-
-  return candidates.filter((candidate) => {
-    const key = `${candidate.name.trim().toLowerCase()}|${candidate.websiteUrl
-      .trim()
-      .toLowerCase()}`
-
-    if (seen.has(key)) {
-      return false
-    }
-
-    seen.add(key)
-    return true
-  })
-}
-
 export const analyzeResponses = task({
   id: "prompt-runs.analyze-responses",
   maxDuration: 600,
@@ -179,7 +159,6 @@ export const analyzeResponses = task({
       ])
     )
 
-    let discoveredCompetitors: DiscoveredCompetitorCandidate[] = []
     let llmResponseMap = new Map<
       string,
       {
@@ -217,8 +196,7 @@ export const analyzeResponses = task({
           })
         },
         output: createGatewayStructuredObjectOutput({
-          description:
-            "Structured prompt-run analysis with brand metrics and discovered competitors.",
+          description: "Structured prompt-run analysis with brand metrics.",
           name: "prompt_run_analysis",
           schema: promptRunAnalysisOutputSchema,
         }),
@@ -231,20 +209,11 @@ export const analyzeResponses = task({
         },
         stopWhen: stepCountIs(3),
         system:
-          "Analyze each response for the known brands. Return one response object per provider response. Only output discovered competitors when the response contains explicit evidence. Use citationUrls only when the URL is in the supplied citations. Return empty arrays instead of guesses.",
+          "Analyze each response for the known brands. Return one response object per provider response. Use citationUrls only when the URL is in the supplied citations. Return empty arrays instead of guesses.",
         temperature: 0,
       })
 
       const output = promptRunAnalysisOutputSchema.parse(result.output)
-
-      discoveredCompetitors = dedupeDiscoveredCompetitors(
-        output.discoveredCompetitors.map((candidate) => ({
-          description: candidate.description,
-          evidenceQuote: candidate.evidenceQuote,
-          name: candidate.name,
-          websiteUrl: candidate.websiteUrl,
-        }))
-      )
 
       llmResponseMap = new Map(
         output.responses.map((response) => [
@@ -295,7 +264,6 @@ export const analyzeResponses = task({
     })
 
     logger.info("[prompt-runs] Analyzer completed", {
-      discoveredCompetitorCount: discoveredCompetitors.length,
       promptRunCount: promptRuns.length,
       projectId: payload.projectId,
     })
@@ -309,7 +277,6 @@ export const analyzeResponses = task({
       cadenceDays: payload.cadenceDays,
       completedAt: new Date().toISOString(),
       configId: payload.configId,
-      discoveredCompetitors,
       projectId: payload.projectId,
       promptRuns,
       scheduledFor: payload.scheduledFor,

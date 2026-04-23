@@ -24,6 +24,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@trigger.dev/react-hooks": "^4.4.4",
     "@trigger.dev/sdk": "^4.4.4",
+    "@vercel/blob": "^2.3.3",
     "ai": "^6.0.145",
     "animejs": "^4.3.6",
     "class-variance-authority": "^0.7.1",

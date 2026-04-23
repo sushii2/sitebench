@@ -128,9 +128,25 @@ export function extractCitations(input: {
 }): NormalizedCitation[] {
   const citations: NormalizedCitation[] = []
 
-  if (input.providerId === "chatgpt") {
+  if (input.providerId === "chatgpt" || input.providerId === "perplexity") {
     for (const [index, source] of takeArray(input.sources).entries()) {
       const citation = toCitation(source, index + 1)
+
+      if (citation) {
+        citations.push(citation)
+      }
+    }
+
+    const legacyPerplexityCitations =
+      input.providerId === "perplexity"
+        ? takeArray(
+            takeObject(input.providerMetadata?.perplexity)?.citations ??
+              takeObject(input.rawResponseJson)?.citations
+          )
+        : []
+
+    for (const [index, result] of legacyPerplexityCitations.entries()) {
+      const citation = toCitation(result, index + 1)
 
       if (citation) {
         citations.push(citation)
@@ -166,19 +182,6 @@ export function extractCitations(input: {
     }
 
     return dedupeCitations(citations)
-  }
-
-  const rawCitations = takeArray(
-    takeObject(input.providerMetadata?.perplexity)?.citations ??
-      takeObject(input.rawResponseJson)?.citations
-  )
-
-  for (const [index, result] of rawCitations.entries()) {
-    const citation = toCitation(result, index + 1)
-
-    if (citation) {
-      citations.push(citation)
-    }
   }
 
   return dedupeCitations(citations)

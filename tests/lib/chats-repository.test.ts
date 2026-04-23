@@ -56,7 +56,10 @@ function makeRawRun(overrides: Partial<RawRunParam> = {}): RawRunParam {
             brand_entity_id: "brand-1",
           },
         ],
-        response_citations: [{ id: "cit-1" }, { id: "cit-2" }],
+        response_citations: [
+          { cited_url: "https://vercel.com/docs", id: "cit-1", source_page_id: "page-1" },
+          { cited_url: "https://vercel.com/blog", id: "cit-2", source_page_id: "page-2" },
+        ],
         status: "completed",
       },
       {
@@ -90,7 +93,12 @@ describe("mapChatSummaryRows", () => {
     expect(row.promptText).toBe("Best Next.js deployment platform?")
     expect(row.sourceCount).toBe(2)
     expect(row.brandMentions).toEqual([
-      { brandEntityId: "brand-1", name: "Vercel", role: "primary" },
+      {
+        brandEntityId: "brand-1",
+        name: "Vercel",
+        role: "primary",
+        websiteHost: null,
+      },
     ])
   })
 
@@ -151,6 +159,43 @@ describe("mapChatSummaryRows", () => {
       "brand-1",
       "brand-2",
     ])
+  })
+
+  it("deduplicates sources across platform responses when they resolve to the same page", () => {
+    const run = makeRawRun({
+      prompt_run_responses: [
+        {
+          id: "resp-1",
+          platform_code: "chatgpt",
+          response_brand_metrics: [],
+          response_citations: [
+            {
+              cited_url: "https://vercel.com/docs",
+              id: "cit-1",
+              source_page_id: "page-1",
+            },
+          ],
+          status: "completed",
+        },
+        {
+          id: "resp-2",
+          platform_code: "claude",
+          response_brand_metrics: [],
+          response_citations: [
+            {
+              cited_url: "https://vercel.com/docs",
+              id: "cit-2",
+              source_page_id: "page-1",
+            },
+          ],
+          status: "completed",
+        },
+      ],
+    })
+
+    const result = mapChatSummaryRows([run], platforms)
+
+    expect(result[0].sourceCount).toBe(1)
   })
 
   it("tolerates missing nested fields", () => {

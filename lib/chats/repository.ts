@@ -10,6 +10,7 @@ import type {
   ChatDetail,
   ChatPlatformSummary,
   ChatResponseView,
+  ChatSentimentSummary,
   ChatSummary,
   PipelineRunBatch,
 } from "@/lib/chats/types"
@@ -26,6 +27,7 @@ type RawBrandEntity = {
   id: string
   name: string
   role: "primary" | "competitor"
+  website_host?: string | null
 }
 
 type RawBrandMetric = {
@@ -33,7 +35,11 @@ type RawBrandMetric = {
   brand_entities: RawBrandEntity | null
 }
 
-type RawCitation = { id: string }
+type RawCitation = {
+  id: string
+  cited_url?: string | null
+  source_page_id?: string | null
+}
 
 type RawResponse = {
   id: string
@@ -99,6 +105,7 @@ function collectBrandMentions(
         brandEntityId: metric.brand_entity_id,
         name: metric.brand_entities.name,
         role: metric.brand_entities.role,
+        websiteHost: metric.brand_entities.website_host ?? null,
       })
     }
   }
@@ -107,13 +114,63 @@ function collectBrandMentions(
 }
 
 function countSources(responses: RawResponse[]): number {
-  let total = 0
+  const seen = new Set<string>()
 
   for (const response of responses) {
-    total += (response.response_citations ?? []).length
+    for (const citation of response.response_citations ?? []) {
+      seen.add(citation.source_page_id ?? citation.cited_url ?? citation.id)
+    }
   }
 
-  return total
+  return seen.size
+}
+
+function toSentimentValue(
+  score: number | null,
+  label: ResponseBrandMetric["sentiment_label"]
+): number {
+  if (score !== null) {
+    if (score >= -1 && score <= 1) {
+      return score
+    }
+
+    return Math.max(-1, Math.min(1, score / 100))
+  }
+
+  if (label === "positive") return 0.75
+  if (label === "negative") return -0.75
+  return 0
+}
+
+function summarizeChatSentiment(
+  brands: ChatBrandMention[]
+): ChatSentimentSummary | null {
+  const primaryMentions = brands.filter((mention) => mention.brand.role === "primary")
+
+  if (primaryMentions.length === 0) {
+    return null
+  }
+
+  const values = primaryMentions.map((mention) =>
+    toSentimentValue(
+      mention.metric.sentiment_score,
+      mention.metric.sentiment_label
+    )
+  )
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length
+  const hasPositive = values.some((value) => value >= 0.25)
+  const hasNegative = values.some((value) => value <= -0.25)
+  const label =
+    hasPositive && hasNegative ? "mixed" :
+    average >= 0.25 ? "positive" :
+    average <= -0.25 ? "negative" :
+    "neutral"
+
+  return {
+    label,
+    sampleSize: primaryMentions.length,
+    score: Number(average.toFixed(3)),
+  }
 }
 
 export function mapChatSummaryRows(
@@ -218,9 +275,9 @@ const SUMMARY_SELECT = `*,
     id, platform_code, status,
     response_brand_metrics(
       brand_entity_id,
-      brand_entities(id, name, role)
+      brand_entities(id, name, role, website_host)
     ),
-    response_citations(id)
+    response_citations(id, cited_url, source_page_id)
   )`
 
 export async function listChatRuns(
@@ -331,29 +388,30 @@ export async function listProjectSourceDomains(
   return [...seen.values()].sort((a, b) => a.domain.localeCompare(b.domain))
 }
 
+type MaybeOne<T> = T | T[] | null | undefined
+
 type DetailRawResponse = PromptRunResponse & {
   response_brand_metrics:
     | Array<
         ResponseBrandMetric & {
-          brand_entities: BrandEntity | null
-        }
-      >
-    | null
-  response_citations:
-    | Array<
-        ResponseCitation & {
-          source_pages:
-            | (SourcePage & { source_domains: SourceDomain | null })
-            | null
+          brand_entities: MaybeOne<BrandEntity>
         }
       >
     | null
 }
 
 type DetailRawRun = PromptRun & {
-  project_topics: ProjectTopic | null
-  tracked_prompts: TrackedPrompt | null
+  project_topics: MaybeOne<ProjectTopic>
+  tracked_prompts: MaybeOne<TrackedPrompt>
   prompt_run_responses: DetailRawResponse[] | null
+}
+
+function firstOf<T>(value: MaybeOne<T>): T | null {
+  if (Array.isArray(value)) {
+    return value[0] ?? null
+  }
+
+  return value ?? null
 }
 
 const DETAIL_SELECT = `*,
@@ -364,13 +422,6 @@ const DETAIL_SELECT = `*,
     response_brand_metrics(
       *,
       brand_entities(*)
-    ),
-    response_citations(
-      *,
-      source_pages(
-        *,
-        source_domains(*)
-      )
     )
   )`
 
@@ -392,12 +443,184 @@ export async function getChatDetailRaw(
   return (response.data as DetailRawRun | null) ?? null
 }
 
+export type LoadedCitation = {
+  attributedBrandIds: string[]
+  citation: ResponseCitation
+  page: SourcePage
+  domain: SourceDomain
+}
+
+export async function loadCitationsForResponses(
+  client: ChatsClient,
+  responseIds: string[]
+): Promise<Map<string, LoadedCitation[]>> {
+  const byResponseId = new Map<string, LoadedCitation[]>()
+
+  if (responseIds.length === 0) {
+    return byResponseId
+  }
+
+  const citationsResponse = await client.database
+    .from("response_citations")
+    .select("*")
+    .in("response_id", responseIds)
+    .order("citation_order", { ascending: true })
+
+  if (!citationsResponse || citationsResponse.error) {
+    throw (
+      citationsResponse?.error ??
+      new Error("Unable to load response citations.")
+    )
+  }
+
+  const citations = takeRows(
+    citationsResponse.data as ResponseCitation[] | ResponseCitation | null
+  )
+
+  if (citations.length === 0) {
+    return byResponseId
+  }
+
+  const citationIds = citations.map((citation) => citation.id)
+  const attributedBrandIdsByCitationId = new Map<string, string[]>()
+
+  if (citationIds.length > 0) {
+    const attributionsResponse = await client.database
+      .from("response_brand_citations")
+      .select("response_citation_id,response_brand_metrics(brand_entity_id)")
+      .in("response_citation_id", citationIds)
+
+    if (!attributionsResponse || attributionsResponse.error) {
+      throw (
+        attributionsResponse?.error ??
+        new Error("Unable to load response brand citations.")
+      )
+    }
+
+    type RawAttributionRow = {
+      response_citation_id: string
+      response_brand_metrics:
+        | { brand_entity_id: string }
+        | Array<{ brand_entity_id: string }>
+        | null
+    }
+
+    for (const row of takeRows(
+      attributionsResponse.data as RawAttributionRow | RawAttributionRow[] | null
+    )) {
+      const metric = firstOf(row.response_brand_metrics)
+
+      if (!metric) {
+        continue
+      }
+
+      const list = attributedBrandIdsByCitationId.get(row.response_citation_id) ?? []
+
+      if (!list.includes(metric.brand_entity_id)) {
+        list.push(metric.brand_entity_id)
+      }
+
+      attributedBrandIdsByCitationId.set(row.response_citation_id, list)
+    }
+  }
+
+  const pageIds = [
+    ...new Set(
+      citations
+        .map((citation) => citation.source_page_id)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ]
+
+  const pagesById = new Map<string, SourcePage>()
+
+  if (pageIds.length > 0) {
+    const pagesResponse = await client.database
+      .from("source_pages")
+      .select("*")
+      .in("id", pageIds)
+
+    if (!pagesResponse || pagesResponse.error) {
+      throw pagesResponse?.error ?? new Error("Unable to load source pages.")
+    }
+
+    for (const page of takeRows(
+      pagesResponse.data as SourcePage[] | SourcePage | null
+    )) {
+      pagesById.set(page.id, page)
+    }
+  }
+
+  const domainIds = [
+    ...new Set(
+      [...pagesById.values()]
+        .map((page) => page.domain_id)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ]
+
+  const domainsById = new Map<string, SourceDomain>()
+
+  if (domainIds.length > 0) {
+    const domainsResponse = await client.database
+      .from("source_domains")
+      .select("*")
+      .in("id", domainIds)
+
+    if (!domainsResponse || domainsResponse.error) {
+      throw (
+        domainsResponse?.error ?? new Error("Unable to load source domains.")
+      )
+    }
+
+    for (const domain of takeRows(
+      domainsResponse.data as SourceDomain[] | SourceDomain | null
+    )) {
+      domainsById.set(domain.id, domain)
+    }
+  }
+
+  for (const citation of citations) {
+    const page = citation.source_page_id
+      ? pagesById.get(citation.source_page_id) ?? null
+      : null
+
+    if (!page) {
+      continue
+    }
+
+    const domain = page.domain_id
+      ? domainsById.get(page.domain_id) ?? null
+      : null
+
+    if (!domain) {
+      continue
+    }
+
+    const list = byResponseId.get(citation.response_id) ?? []
+
+    list.push({
+      attributedBrandIds: attributedBrandIdsByCitationId.get(citation.id) ?? [],
+      citation,
+      domain,
+      page,
+    })
+    byResponseId.set(citation.response_id, list)
+  }
+
+  return byResponseId
+}
+
 export function buildChatDetail(
   raw: DetailRawRun,
   brands: BrandEntity[],
-  platforms: AiPlatform[]
+  platforms: AiPlatform[],
+  citationsByResponseId: Map<string, LoadedCitation[]> = new Map()
 ): ChatDetail | null {
-  if (!raw.project_topics || !raw.tracked_prompts) {
+  const topic = firstOf(raw.project_topics)
+  const trackedPrompt = firstOf(raw.tracked_prompts)
+
+  if (!topic || !trackedPrompt) {
     return null
   }
 
@@ -416,35 +639,16 @@ export function buildChatDetail(
       const brandMentions: ChatBrandMention[] = []
 
       for (const metric of response.response_brand_metrics ?? []) {
-        if (!metric.brand_entities) {
+        const brand = firstOf(metric.brand_entities)
+
+        if (!brand) {
           continue
         }
 
-        brandMentions.push({ brand: metric.brand_entities, metric })
+        brandMentions.push({ brand, metric })
       }
 
-      type RawSource = {
-        citation: ResponseCitation
-        page: SourcePage
-        domain: SourceDomain
-      }
-
-      const rawSources: RawSource[] = []
-
-      for (const citation of response.response_citations ?? []) {
-        const page = citation.source_pages
-
-        if (!page || !page.source_domains) {
-          continue
-        }
-
-        rawSources.push({
-          citation,
-          domain: page.source_domains,
-          page,
-        })
-      }
-
+      const rawSources = citationsByResponseId.get(response.id) ?? []
       const platform = platformByCode.get(response.platform_code) ?? null
 
       return {
@@ -455,12 +659,16 @@ export function buildChatDetail(
         sources: groupSources(rawSources, brands),
       }
     })
+  const chatSentiment = summarizeChatSentiment(
+    views.flatMap((view) => view.brands)
+  )
 
   return {
+    chatSentiment,
     promptRun: raw,
     responses: views,
-    topic: raw.project_topics,
-    trackedPrompt: raw.tracked_prompts,
+    topic,
+    trackedPrompt,
   }
 }
 
@@ -582,5 +790,18 @@ export async function getChatDetail(
     return null
   }
 
-  return buildChatDetail(raw, input.brands, input.platforms)
+  const responseIds = (raw.prompt_run_responses ?? []).map(
+    (response) => response.id
+  )
+  const citationsByResponseId = await loadCitationsForResponses(
+    client,
+    responseIds
+  )
+
+  return buildChatDetail(
+    raw,
+    input.brands,
+    input.platforms,
+    citationsByResponseId
+  )
 }

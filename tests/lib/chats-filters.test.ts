@@ -6,6 +6,7 @@ import {
   filtersFromQueryString,
   filtersToQueryString,
   hasActiveFilters,
+  normalizeChatFilters,
 } from "@/lib/chats/filters"
 import type { ChatSummary } from "@/lib/chats/types"
 
@@ -68,12 +69,22 @@ describe("chat filters", () => {
     const summaries = [
       makeSummary({
         brandMentions: [
-          { brandEntityId: "brand-a", name: "A", role: "primary" },
+          {
+            brandEntityId: "brand-a",
+            name: "A",
+            role: "primary",
+            websiteHost: "brand-a.com",
+          },
         ],
       }),
       makeSummary({
         brandMentions: [
-          { brandEntityId: "brand-b", name: "B", role: "competitor" },
+          {
+            brandEntityId: "brand-b",
+            name: "B",
+            role: "competitor",
+            websiteHost: "brand-b.com",
+          },
         ],
         promptRunId: "run-2",
       }),
@@ -147,6 +158,25 @@ describe("chat filters", () => {
     expect(result[0].promptRunId).toBe("run-2")
   })
 
+  it("includes the full custom end date", () => {
+    const summaries = [
+      makeSummary({ scheduledFor: "2026-04-15T23:59:59.000Z" }),
+      makeSummary({
+        promptRunId: "run-2",
+        scheduledFor: "2026-04-16T00:00:00.000Z",
+      }),
+    ]
+
+    const result = applyFilters(summaries, {
+      ...emptyFilters(),
+      customRange: { from: "2026-04-01", to: "2026-04-15" },
+      timeframe: "custom",
+    })
+
+    expect(result).toHaveLength(1)
+    expect(result[0].promptRunId).toBe("run-1")
+  })
+
   it("filters by free-text search on promptText (case-insensitive)", () => {
     const summaries = [
       makeSummary({ promptText: "Best Next.js deployment platform?" }),
@@ -213,6 +243,43 @@ describe("chat filters", () => {
       )
 
       expect(parsed.pipelineRunDate).toBeNull()
+    })
+  })
+
+  describe("normalization", () => {
+    it("drops stale ids and prompt ids outside the selected topics", () => {
+      const filters = normalizeChatFilters(
+        {
+          brandEntityIds: ["brand-a", "brand-missing"],
+          customRange: { from: "2026-04-01", to: "2026-04-15" },
+          pipelineRunDate: "2026-04-20",
+          search: "next",
+          sourceDomainIds: ["domain-a", "domain-missing"],
+          timeframe: "7d",
+          topicIds: ["topic-a", "topic-missing"],
+          trackedPromptIds: ["prompt-a", "prompt-b", "prompt-missing"],
+        },
+        {
+          brands: [{ id: "brand-a" }],
+          domains: [{ id: "domain-a" }],
+          prompts: [
+            { id: "prompt-a", project_topic_id: "topic-a" },
+            { id: "prompt-b", project_topic_id: "topic-b" },
+          ],
+          topics: [{ id: "topic-a" }],
+        }
+      )
+
+      expect(filters).toEqual({
+        brandEntityIds: ["brand-a"],
+        customRange: null,
+        pipelineRunDate: "2026-04-20",
+        search: "next",
+        sourceDomainIds: ["domain-a"],
+        timeframe: null,
+        topicIds: ["topic-a"],
+        trackedPromptIds: ["prompt-a"],
+      })
     })
   })
 })
