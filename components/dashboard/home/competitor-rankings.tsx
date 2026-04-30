@@ -11,8 +11,17 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { useLogoDevPublishableKey } from "@/hooks/use-logo-dev-key"
+import { buildBrandLogoUrl } from "@/lib/brands/logo"
+import { parsePublicWebsiteUrl } from "@/lib/brands/validation"
 import type { CompetitorRanking } from "@/lib/dashboard/mock-data"
 import { cn } from "@/lib/utils"
+
+function toHostname(value: string | null | undefined): string | null {
+  if (!value) return null
+  const url = parsePublicWebsiteUrl(value)
+  return url?.hostname ?? value.toLowerCase()
+}
 
 export function CompetitorRankings({
   rankings,
@@ -21,6 +30,7 @@ export function CompetitorRankings({
 }) {
   const { brand } = useAuth()
   const brandName = brand?.company_name?.trim() ?? ""
+  const publishableKey = useLogoDevPublishableKey()
 
   return (
     <Card>
@@ -34,6 +44,15 @@ export function CompetitorRankings({
           const isOwnBrand =
             item.name === "Your Brand" ||
             (brandName && item.name === brandName)
+          const websiteForLogo =
+            (isOwnBrand && toHostname(brand?.website)) ||
+            toHostname(item.website)
+          const logoUrl =
+            publishableKey && websiteForLogo
+              ? buildBrandLogoUrl(websiteForLogo, publishableKey)
+              : null
+          const displayName =
+            isOwnBrand && brandName ? brandName : item.name
 
           return (
             <div key={item.name}>
@@ -47,9 +66,25 @@ export function CompetitorRankings({
                 <span className="w-5 text-center font-mono text-xs text-muted-foreground">
                   {item.rank}
                 </span>
+                <span className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-border/60 bg-background">
+                  {logoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={logoUrl}
+                      alt=""
+                      width={28}
+                      height={28}
+                      className="size-full object-contain"
+                    />
+                  ) : (
+                    <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+                      {displayName.slice(0, 2)}
+                    </span>
+                  )}
+                </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">
-                    {isOwnBrand && brandName ? brandName : item.name}
+                    {displayName}
                     {isOwnBrand && (
                       <span className="ml-1.5 text-xs text-muted-foreground">
                         (you)

@@ -14,11 +14,26 @@ import {
   type ChartConfig,
   ChartContainer,
   ChartLegend,
-  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
+import { useLogoDevPublishableKey } from "@/hooks/use-logo-dev-key"
+import { buildBrandLogoUrl } from "@/lib/brands/logo"
+import { parsePublicWebsiteUrl } from "@/lib/brands/validation"
 import type { VisibilityTrendPoint } from "@/lib/dashboard/mock-data"
+
+function toHostname(value: string | null | undefined): string | null {
+  if (!value) return null
+  const url = parsePublicWebsiteUrl(value)
+  return url?.hostname ?? value.toLowerCase()
+}
+
+const FALLBACK_DOMAINS = {
+  brand: "pillows.com",
+  competitor1: "brooklinen.com",
+  competitor2: "coophomegoods.com",
+  competitor3: "tempurpedic.com",
+} as const
 
 export function VisibilityTrendChart({
   data,
@@ -26,8 +41,19 @@ export function VisibilityTrendChart({
   data: VisibilityTrendPoint[]
 }) {
   const { brand } = useAuth()
+  const publishableKey = useLogoDevPublishableKey()
   const brandName = brand?.company_name?.trim() || "Your Brand"
   const competitors = brand?.competitors ?? []
+
+  const dataKeyToDomain: Record<string, string> = {
+    brand: toHostname(brand?.website) ?? FALLBACK_DOMAINS.brand,
+    competitor1:
+      toHostname(competitors[0]?.website) ?? FALLBACK_DOMAINS.competitor1,
+    competitor2:
+      toHostname(competitors[1]?.website) ?? FALLBACK_DOMAINS.competitor2,
+    competitor3:
+      toHostname(competitors[2]?.website) ?? FALLBACK_DOMAINS.competitor3,
+  }
 
   const chartConfig: ChartConfig = {
     brand: {
@@ -82,14 +108,30 @@ export function VisibilityTrendChart({
                   labelFormatter={(value) => value as string}
                   formatter={(value, name) => {
                     const config = chartConfig[name as string]
+                    const domain = dataKeyToDomain[name as string]
+                    const logoUrl =
+                      publishableKey && domain
+                        ? buildBrandLogoUrl(domain, publishableKey)
+                        : null
                     return (
                       <div className="flex items-center gap-2">
-                        <div
-                          className="size-2 shrink-0 rounded-[2px]"
-                          style={{
-                            backgroundColor: config?.color ?? "var(--primary)",
-                          }}
-                        />
+                        {logoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={logoUrl}
+                            alt=""
+                            width={14}
+                            height={14}
+                            className="size-3.5 shrink-0 rounded-[2px] object-contain"
+                          />
+                        ) : (
+                          <div
+                            className="size-2 shrink-0 rounded-[2px]"
+                            style={{
+                              backgroundColor: config?.color ?? "var(--primary)",
+                            }}
+                          />
+                        )}
                         <span className="text-muted-foreground">
                           {config?.label ?? name}
                         </span>
@@ -102,7 +144,16 @@ export function VisibilityTrendChart({
                 />
               }
             />
-            <ChartLegend content={<ChartLegendContent />} />
+            <ChartLegend
+              content={(props) => (
+                <VisibilityTrendLegend
+                  payload={props.payload}
+                  chartConfig={chartConfig}
+                  domainMap={dataKeyToDomain}
+                  publishableKey={publishableKey}
+                />
+              )}
+            />
             <Line
               type="monotone"
               dataKey="brand"
@@ -139,5 +190,61 @@ export function VisibilityTrendChart({
         </ChartContainer>
       </CardContent>
     </Card>
+  )
+}
+
+type LegendItem = {
+  dataKey?: unknown
+  color?: string
+}
+
+function VisibilityTrendLegend({
+  payload,
+  chartConfig,
+  domainMap,
+  publishableKey,
+}: {
+  payload?: readonly LegendItem[]
+  chartConfig: ChartConfig
+  domainMap: Record<string, string>
+  publishableKey: string | null
+}) {
+  if (!payload?.length) return null
+
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 pt-3">
+      {payload.map((item) => {
+        const key =
+          typeof item.dataKey === "string" || typeof item.dataKey === "number"
+            ? String(item.dataKey)
+            : ""
+        const config = chartConfig[key]
+        const domain = domainMap[key]
+        const logoUrl =
+          publishableKey && domain
+            ? buildBrandLogoUrl(domain, publishableKey)
+            : null
+
+        return (
+          <div key={key} className="flex items-center gap-1.5 text-xs">
+            <span
+              className="h-0.5 w-3.5 shrink-0 rounded-full"
+              style={{ backgroundColor: item.color }}
+            />
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoUrl}
+                alt=""
+                width={14}
+                height={14}
+                className="size-3.5 shrink-0 rounded-[2px] object-contain"
+              />
+            ) : null}
+            <span className="text-muted-foreground">{config?.label ?? key}</span>
+          </div>
+        )
+      })}
+    </div>
   )
 }

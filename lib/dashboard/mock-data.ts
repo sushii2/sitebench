@@ -39,14 +39,14 @@ export interface SentimentData {
 export const mockKpis: KpiMetric[] = [
   {
     label: "Brand Visibility",
-    value: "51.8%",
-    change: 3.2,
+    value: "47.6%",
+    change: 5.4,
     changeLabel: "vs last period",
   },
   {
     label: "Citation Share",
-    value: "12.0%",
-    change: 1.8,
+    value: "14.3%",
+    change: 2.7,
     changeLabel: "vs last period",
   },
   {
@@ -57,81 +57,88 @@ export const mockKpis: KpiMetric[] = [
   },
   {
     label: "Sentiment Score",
-    value: "82",
-    change: 4,
+    value: "84",
+    change: 6,
     changeLabel: "vs last period",
   },
 ]
 
 export const mockVisibilityTrend: VisibilityTrendPoint[] = [
-  { date: "Apr 1", brand: 42, competitor1: 38, competitor2: 30, competitor3: 25 },
-  { date: "Apr 2", brand: 44, competitor1: 37, competitor2: 31, competitor3: 24 },
-  { date: "Apr 3", brand: 43, competitor1: 39, competitor2: 29, competitor3: 26 },
-  { date: "Apr 4", brand: 46, competitor1: 40, competitor2: 32, competitor3: 25 },
-  { date: "Apr 5", brand: 45, competitor1: 38, competitor2: 30, competitor3: 27 },
-  { date: "Apr 6", brand: 47, competitor1: 41, competitor2: 33, competitor3: 26 },
-  { date: "Apr 7", brand: 48, competitor1: 39, competitor2: 31, competitor3: 28 },
-  { date: "Apr 8", brand: 46, competitor1: 42, competitor2: 34, competitor3: 27 },
-  { date: "Apr 9", brand: 49, competitor1: 40, competitor2: 32, competitor3: 29 },
-  { date: "Apr 10", brand: 50, competitor1: 41, competitor2: 35, competitor3: 28 },
-  { date: "Apr 11", brand: 48, competitor1: 43, competitor2: 33, competitor3: 30 },
-  { date: "Apr 12", brand: 51, competitor1: 42, competitor2: 36, competitor3: 29 },
-  { date: "Apr 13", brand: 50, competitor1: 44, competitor2: 34, competitor3: 31 },
-  { date: "Apr 14", brand: 52, competitor1: 43, competitor2: 37, competitor3: 30 },
+  { date: "Apr 16", brand: 38, competitor1: 52, competitor2: 41, competitor3: 33 },
+  { date: "Apr 17", brand: 39, competitor1: 51, competitor2: 42, competitor3: 32 },
+  { date: "Apr 18", brand: 41, competitor1: 53, competitor2: 40, competitor3: 34 },
+  { date: "Apr 19", brand: 40, competitor1: 52, competitor2: 41, competitor3: 33 },
+  { date: "Apr 20", brand: 42, competitor1: 54, competitor2: 43, competitor3: 35 },
+  { date: "Apr 21", brand: 43, competitor1: 53, competitor2: 42, competitor3: 34 },
+  { date: "Apr 22", brand: 44, competitor1: 55, competitor2: 44, competitor3: 36 },
+  { date: "Apr 23", brand: 45, competitor1: 54, competitor2: 43, competitor3: 35 },
+  { date: "Apr 24", brand: 44, competitor1: 56, competitor2: 45, competitor3: 37 },
+  { date: "Apr 25", brand: 46, competitor1: 55, competitor2: 44, competitor3: 36 },
+  { date: "Apr 26", brand: 47, competitor1: 54, competitor2: 45, competitor3: 38 },
+  { date: "Apr 27", brand: 46, competitor1: 56, competitor2: 46, competitor3: 37 },
+  { date: "Apr 28", brand: 48, competitor1: 55, competitor2: 45, competitor3: 39 },
+  { date: "Apr 29", brand: 48, competitor1: 54, competitor2: 46, competitor3: 38 },
 ]
 
 export const mockCompetitorRankings: CompetitorRanking[] = [
-  { rank: 1, name: "Allbirds", website: "allbirds.com", visibility: 54.2, rankChange: 0 },
-  { rank: 2, name: "Your Brand", website: "yourbrand.com", visibility: 51.8, rankChange: 1 },
-  { rank: 3, name: "Bombas", website: "bombas.com", visibility: 43.1, rankChange: -1 },
-  { rank: 4, name: "Warby Parker", website: "warbyparker.com", visibility: 36.8, rankChange: 0 },
-  { rank: 5, name: "Casper", website: "casper.com", visibility: 29.5, rankChange: 2 },
+  { rank: 1, name: "Brooklinen", website: "brooklinen.com", visibility: 53.7, rankChange: 0 },
+  { rank: 2, name: "Your Brand", website: "pillows.com", visibility: 47.6, rankChange: 1 },
+  { rank: 3, name: "Coop Home Goods", website: "coophomegoods.com", visibility: 45.2, rankChange: -1 },
+  { rank: 4, name: "Tempur-Pedic", website: "tempurpedic.com", visibility: 39.8, rankChange: 0 },
+  { rank: 5, name: "Casper", website: "casper.com", visibility: 34.1, rankChange: 1 },
+  { rank: 6, name: "Saatva", website: "saatva.com", visibility: 28.6, rankChange: -1 },
 ]
 
 export const mockPlatformBreakdown: PlatformBreakdown[] = [
-  { platform: "ChatGPT", visibility: 58, change: 4.2 },
-  { platform: "Claude", visibility: 52, change: 3.8 },
-  { platform: "Gemini", visibility: 47, change: 1.2 },
-  { platform: "Grok", visibility: 31, change: -0.5 },
+  { platform: "ChatGPT", visibility: 56, change: 6.4 },
+  { platform: "Claude", visibility: 51, change: 4.9 },
+  { platform: "Gemini", visibility: 42, change: 2.1 },
+  { platform: "Grok", visibility: 27, change: -1.2 },
 ]
 
 export const mockTopQueries: TopQuery[] = [
   {
-    query: "best sustainable sneakers",
-    mentions: 9,
-    total: 12,
+    query: "best pillows for side sleepers",
+    mentions: 11,
+    total: 14,
     platforms: ["ChatGPT", "Claude", "Gemini"],
   },
   {
-    query: "eco-friendly running shoes",
+    query: "best cooling pillows for hot sleepers",
+    mentions: 9,
+    total: 13,
+    platforms: ["ChatGPT", "Claude", "Grok"],
+  },
+  {
+    query: "best pillow for neck pain",
+    mentions: 8,
+    total: 12,
+    platforms: ["ChatGPT", "Gemini"],
+  },
+  {
+    query: "memory foam vs down pillow",
     mentions: 7,
+    total: 11,
+    platforms: ["Claude", "Gemini"],
+  },
+  {
+    query: "best hotel-quality pillows for home",
+    mentions: 6,
     total: 10,
     platforms: ["ChatGPT", "Claude"],
   },
   {
-    query: "comfortable everyday shoes under $150",
-    mentions: 6,
-    total: 11,
-    platforms: ["ChatGPT", "Gemini", "Grok"],
-  },
-  {
-    query: "best direct-to-consumer shoe brands",
+    query: "best pillows under $100",
     mentions: 5,
     total: 9,
-    platforms: ["Claude", "Gemini"],
-  },
-  {
-    query: "organic cotton sneakers review",
-    mentions: 4,
-    total: 8,
-    platforms: ["ChatGPT"],
+    platforms: ["ChatGPT", "Gemini", "Grok"],
   },
 ]
 
 export const mockSentiment: SentimentData[] = [
-  { label: "Positive", value: 68 },
-  { label: "Neutral", value: 24 },
-  { label: "Negative", value: 8 },
+  { label: "Positive", value: 71 },
+  { label: "Neutral", value: 23 },
+  { label: "Negative", value: 6 },
 ]
 
 // --- Comparison Matrix ---
@@ -148,33 +155,39 @@ export const comparisonMatrixProviders = ["ChatGPT", "Claude", "Gemini", "Grok"]
 export const mockComparisonMatrix: ComparisonMatrixRow[] = [
   {
     name: "Your Brand",
-    website: "yourbrand.com",
+    website: "pillows.com",
     isOwnBrand: true,
-    scores: { ChatGPT: 60, Claude: 55, Gemini: 48, Grok: 35 },
+    scores: { ChatGPT: 56, Claude: 51, Gemini: 42, Grok: 27 },
   },
   {
-    name: "Allbirds",
-    website: "allbirds.com",
+    name: "Brooklinen",
+    website: "brooklinen.com",
     isOwnBrand: false,
-    scores: { ChatGPT: 65, Claude: 50, Gemini: 52, Grok: 40 },
+    scores: { ChatGPT: 62, Claude: 58, Gemini: 49, Grok: 38 },
   },
   {
-    name: "Bombas",
-    website: "bombas.com",
+    name: "Coop Home Goods",
+    website: "coophomegoods.com",
     isOwnBrand: false,
-    scores: { ChatGPT: 40, Claude: 45, Gemini: 38, Grok: 30 },
+    scores: { ChatGPT: 58, Claude: 49, Gemini: 41, Grok: 32 },
   },
   {
-    name: "Warby Parker",
-    website: "warbyparker.com",
+    name: "Tempur-Pedic",
+    website: "tempurpedic.com",
     isOwnBrand: false,
-    scores: { ChatGPT: 35, Claude: 30, Gemini: 42, Grok: 25 },
+    scores: { ChatGPT: 44, Claude: 41, Gemini: 38, Grok: 31 },
   },
   {
     name: "Casper",
     website: "casper.com",
     isOwnBrand: false,
-    scores: { ChatGPT: 20, Claude: 25, Gemini: 30, Grok: 20 },
+    scores: { ChatGPT: 38, Claude: 35, Gemini: 33, Grok: 25 },
+  },
+  {
+    name: "Saatva",
+    website: "saatva.com",
+    isOwnBrand: false,
+    scores: { ChatGPT: 31, Claude: 28, Gemini: 30, Grok: 22 },
   },
 ]
 
@@ -194,32 +207,36 @@ export type ProviderRankingsData = Record<string, ProviderRankingRow[]>
 
 export const mockProviderRankings: ProviderRankingsData = {
   ChatGPT: [
-    { rank: 1, name: "Allbirds", website: "allbirds.com", isOwnBrand: false, visibility: 65, shareOfVoice: 28, sentiment: "Positive" },
-    { rank: 2, name: "Your Brand", website: "yourbrand.com", isOwnBrand: true, visibility: 60, shareOfVoice: 24, sentiment: "Positive" },
-    { rank: 3, name: "Bombas", website: "bombas.com", isOwnBrand: false, visibility: 40, shareOfVoice: 18, sentiment: "Neutral" },
-    { rank: 4, name: "Warby Parker", website: "warbyparker.com", isOwnBrand: false, visibility: 35, shareOfVoice: 15, sentiment: "Neutral" },
-    { rank: 5, name: "Casper", website: "casper.com", isOwnBrand: false, visibility: 20, shareOfVoice: 10, sentiment: "Neutral" },
+    { rank: 1, name: "Brooklinen", website: "brooklinen.com", isOwnBrand: false, visibility: 62, shareOfVoice: 26, sentiment: "Positive" },
+    { rank: 2, name: "Coop Home Goods", website: "coophomegoods.com", isOwnBrand: false, visibility: 58, shareOfVoice: 22, sentiment: "Positive" },
+    { rank: 3, name: "Your Brand", website: "pillows.com", isOwnBrand: true, visibility: 56, shareOfVoice: 21, sentiment: "Positive" },
+    { rank: 4, name: "Tempur-Pedic", website: "tempurpedic.com", isOwnBrand: false, visibility: 44, shareOfVoice: 15, sentiment: "Neutral" },
+    { rank: 5, name: "Casper", website: "casper.com", isOwnBrand: false, visibility: 38, shareOfVoice: 11, sentiment: "Neutral" },
+    { rank: 6, name: "Saatva", website: "saatva.com", isOwnBrand: false, visibility: 31, shareOfVoice: 5, sentiment: "Neutral" },
   ],
   Claude: [
-    { rank: 1, name: "Your Brand", website: "yourbrand.com", isOwnBrand: true, visibility: 55, shareOfVoice: 26, sentiment: "Positive" },
-    { rank: 2, name: "Allbirds", website: "allbirds.com", isOwnBrand: false, visibility: 50, shareOfVoice: 22, sentiment: "Positive" },
-    { rank: 3, name: "Bombas", website: "bombas.com", isOwnBrand: false, visibility: 45, shareOfVoice: 20, sentiment: "Positive" },
-    { rank: 4, name: "Warby Parker", website: "warbyparker.com", isOwnBrand: false, visibility: 30, shareOfVoice: 12, sentiment: "Neutral" },
-    { rank: 5, name: "Casper", website: "casper.com", isOwnBrand: false, visibility: 25, shareOfVoice: 8, sentiment: "Negative" },
+    { rank: 1, name: "Brooklinen", website: "brooklinen.com", isOwnBrand: false, visibility: 58, shareOfVoice: 25, sentiment: "Positive" },
+    { rank: 2, name: "Your Brand", website: "pillows.com", isOwnBrand: true, visibility: 51, shareOfVoice: 23, sentiment: "Positive" },
+    { rank: 3, name: "Coop Home Goods", website: "coophomegoods.com", isOwnBrand: false, visibility: 49, shareOfVoice: 20, sentiment: "Positive" },
+    { rank: 4, name: "Tempur-Pedic", website: "tempurpedic.com", isOwnBrand: false, visibility: 41, shareOfVoice: 14, sentiment: "Neutral" },
+    { rank: 5, name: "Casper", website: "casper.com", isOwnBrand: false, visibility: 35, shareOfVoice: 11, sentiment: "Neutral" },
+    { rank: 6, name: "Saatva", website: "saatva.com", isOwnBrand: false, visibility: 28, shareOfVoice: 7, sentiment: "Neutral" },
   ],
   Gemini: [
-    { rank: 1, name: "Allbirds", website: "allbirds.com", isOwnBrand: false, visibility: 52, shareOfVoice: 25, sentiment: "Positive" },
-    { rank: 2, name: "Your Brand", website: "yourbrand.com", isOwnBrand: true, visibility: 48, shareOfVoice: 22, sentiment: "Positive" },
-    { rank: 3, name: "Warby Parker", website: "warbyparker.com", isOwnBrand: false, visibility: 42, shareOfVoice: 18, sentiment: "Neutral" },
-    { rank: 4, name: "Bombas", website: "bombas.com", isOwnBrand: false, visibility: 38, shareOfVoice: 15, sentiment: "Neutral" },
-    { rank: 5, name: "Casper", website: "casper.com", isOwnBrand: false, visibility: 30, shareOfVoice: 10, sentiment: "Neutral" },
+    { rank: 1, name: "Brooklinen", website: "brooklinen.com", isOwnBrand: false, visibility: 49, shareOfVoice: 24, sentiment: "Positive" },
+    { rank: 2, name: "Your Brand", website: "pillows.com", isOwnBrand: true, visibility: 42, shareOfVoice: 21, sentiment: "Positive" },
+    { rank: 3, name: "Coop Home Goods", website: "coophomegoods.com", isOwnBrand: false, visibility: 41, shareOfVoice: 19, sentiment: "Positive" },
+    { rank: 4, name: "Tempur-Pedic", website: "tempurpedic.com", isOwnBrand: false, visibility: 38, shareOfVoice: 16, sentiment: "Neutral" },
+    { rank: 5, name: "Casper", website: "casper.com", isOwnBrand: false, visibility: 33, shareOfVoice: 12, sentiment: "Neutral" },
+    { rank: 6, name: "Saatva", website: "saatva.com", isOwnBrand: false, visibility: 30, shareOfVoice: 8, sentiment: "Neutral" },
   ],
   Grok: [
-    { rank: 1, name: "Allbirds", website: "allbirds.com", isOwnBrand: false, visibility: 40, shareOfVoice: 30, sentiment: "Positive" },
-    { rank: 2, name: "Your Brand", website: "yourbrand.com", isOwnBrand: true, visibility: 35, shareOfVoice: 22, sentiment: "Neutral" },
-    { rank: 3, name: "Bombas", website: "bombas.com", isOwnBrand: false, visibility: 30, shareOfVoice: 18, sentiment: "Neutral" },
-    { rank: 4, name: "Warby Parker", website: "warbyparker.com", isOwnBrand: false, visibility: 25, shareOfVoice: 15, sentiment: "Neutral" },
-    { rank: 5, name: "Casper", website: "casper.com", isOwnBrand: false, visibility: 20, shareOfVoice: 10, sentiment: "Negative" },
+    { rank: 1, name: "Brooklinen", website: "brooklinen.com", isOwnBrand: false, visibility: 38, shareOfVoice: 28, sentiment: "Positive" },
+    { rank: 2, name: "Coop Home Goods", website: "coophomegoods.com", isOwnBrand: false, visibility: 32, shareOfVoice: 21, sentiment: "Neutral" },
+    { rank: 3, name: "Tempur-Pedic", website: "tempurpedic.com", isOwnBrand: false, visibility: 31, shareOfVoice: 18, sentiment: "Neutral" },
+    { rank: 4, name: "Your Brand", website: "pillows.com", isOwnBrand: true, visibility: 27, shareOfVoice: 14, sentiment: "Neutral" },
+    { rank: 5, name: "Casper", website: "casper.com", isOwnBrand: false, visibility: 25, shareOfVoice: 12, sentiment: "Neutral" },
+    { rank: 6, name: "Saatva", website: "saatva.com", isOwnBrand: false, visibility: 22, shareOfVoice: 7, sentiment: "Negative" },
   ],
 }
 
@@ -233,14 +250,14 @@ export interface RecommendationRateData {
 }
 
 export const mockRecommendationRate: RecommendationRateData = {
-  mentioned: 142,
-  recommended: 87,
-  topRecommendedQuery: "best sustainable sneakers to buy",
+  mentioned: 218,
+  recommended: 134,
+  topRecommendedQuery: "best pillows for side sleepers with neck pain",
   byProvider: [
-    { platform: "ChatGPT", rate: 72 },
-    { platform: "Claude", rate: 65 },
-    { platform: "Gemini", rate: 54 },
-    { platform: "Grok", rate: 38 },
+    { platform: "ChatGPT", rate: 74 },
+    { platform: "Claude", rate: 68 },
+    { platform: "Gemini", rate: 52 },
+    { platform: "Grok", rate: 36 },
   ],
 }
 
@@ -255,33 +272,39 @@ export interface ContentGap {
 
 export const mockContentGaps: ContentGap[] = [
   {
-    query: "best wool runners for travel",
-    competitorsMentioned: ["Allbirds", "Bombas"],
+    query: "best organic pillows made in the USA",
+    competitorsMentioned: ["Brooklinen", "Avocado", "Coop Home Goods"],
     yourVisibility: 0,
     estimatedVolume: "High",
   },
   {
-    query: "sustainable gift ideas under $100",
-    competitorsMentioned: ["Allbirds", "Warby Parker", "Casper"],
+    query: "best adjustable pillows for back and side sleepers",
+    competitorsMentioned: ["Coop Home Goods", "Tempur-Pedic"],
     yourVisibility: 0,
     estimatedVolume: "High",
   },
   {
-    query: "most comfortable work from home shoes",
-    competitorsMentioned: ["Allbirds"],
-    yourVisibility: 8,
+    query: "best pillows for stomach sleepers 2026",
+    competitorsMentioned: ["Brooklinen", "Casper"],
+    yourVisibility: 6,
+    estimatedVolume: "High",
+  },
+  {
+    query: "hypoallergenic pillows for allergy sufferers",
+    competitorsMentioned: ["Brooklinen", "Coop Home Goods"],
+    yourVisibility: 11,
     estimatedVolume: "Medium",
   },
   {
-    query: "eco-friendly sneaker brands comparison",
-    competitorsMentioned: ["Allbirds", "Bombas"],
-    yourVisibility: 12,
-    estimatedVolume: "Medium",
-  },
-  {
-    query: "best shoes for standing all day",
-    competitorsMentioned: ["Allbirds", "Bombas", "Casper"],
+    query: "best buckwheat pillows for neck support",
+    competitorsMentioned: ["Coop Home Goods"],
     yourVisibility: 0,
+    estimatedVolume: "Medium",
+  },
+  {
+    query: "luxury hotel pillows you can buy at home",
+    competitorsMentioned: ["Brooklinen", "Saatva"],
+    yourVisibility: 14,
     estimatedVolume: "Low",
   },
 ]
@@ -297,11 +320,12 @@ export interface CategoryPosition {
 }
 
 export const mockCategoryPositions: CategoryPosition[] = [
-  { category: "Sustainable Footwear", rank: 2, totalCompetitors: 12, visibility: 58, trend: 3 },
-  { category: "Running Shoes", rank: 4, totalCompetitors: 18, visibility: 34, trend: -1 },
-  { category: "Eco-Friendly Fashion", rank: 3, totalCompetitors: 15, visibility: 42, trend: 2 },
-  { category: "DTC Brands", rank: 5, totalCompetitors: 22, visibility: 28, trend: 0 },
-  { category: "Casual Sneakers", rank: 3, totalCompetitors: 14, visibility: 45, trend: 1 },
+  { category: "Memory Foam Pillows", rank: 1, totalCompetitors: 14, visibility: 62, trend: 4 },
+  { category: "Cooling Pillows", rank: 2, totalCompetitors: 16, visibility: 54, trend: 3 },
+  { category: "Side Sleeper Pillows", rank: 2, totalCompetitors: 18, visibility: 51, trend: 2 },
+  { category: "Down & Down Alternative", rank: 4, totalCompetitors: 13, visibility: 36, trend: -1 },
+  { category: "Hotel-Quality Pillows", rank: 3, totalCompetitors: 11, visibility: 44, trend: 1 },
+  { category: "Organic & Natural Pillows", rank: 6, totalCompetitors: 12, visibility: 18, trend: 0 },
 ]
 
 // --- Weekly Alerts ---
@@ -315,22 +339,27 @@ export interface WeeklyAlert {
 export const mockWeeklyAlerts: WeeklyAlert[] = [
   {
     type: "gain",
-    title: "Visibility up on Claude",
-    description: "Your brand visibility on Claude increased 8% this week, now ranking #1 for sustainable footwear queries.",
+    title: "#1 on ChatGPT for Memory Foam",
+    description: "Pillows.com overtook Coop Home Goods for the top spot in memory foam pillow recommendations on ChatGPT this week.",
+  },
+  {
+    type: "gain",
+    title: "Sentiment up across Claude",
+    description: "Positive sentiment rose from 64% to 71% on Claude, driven by mentions of your 100-night trial and free returns.",
   },
   {
     type: "loss",
-    title: "Dropped in Running Shoes category",
-    description: "Rank fell from #3 to #4 in Running Shoes. Allbirds gained ground with new product mentions.",
-  },
-  {
-    type: "new",
-    title: "New competitor detected",
-    description: "CARIUMA is now appearing in 3 of your tracked queries across ChatGPT and Gemini.",
+    title: "Slipped in Down Alternative",
+    description: "Rank fell from #3 to #4 for down alternative pillow queries. Brooklinen gained citations from a Wirecutter feature.",
   },
   {
     type: "opportunity",
-    title: "Content gap opportunity",
-    description: "\"best wool runners for travel\" is trending with high volume — competitors rank but you don't.",
+    title: "Organic pillows is wide open",
+    description: "\"best organic pillows made in the USA\" is high volume — Avocado and Brooklinen rank, you don't appear at all.",
+  },
+  {
+    type: "new",
+    title: "New competitor: Marlow",
+    description: "Marlow Pillow is now appearing in 4 of your tracked queries, mostly on ChatGPT and Gemini.",
   },
 ]
